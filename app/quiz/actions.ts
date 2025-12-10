@@ -53,24 +53,28 @@ export async function getModules(sourceId: string) {
   return data
 }
 
-// 4. Hitung statistik user login
+// 5. Ambil Statistik User (Total & Rata-rata)
 export async function getUserStats() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
+  
   if (!user) return { totalQuiz: 0, avgScore: 0 }
 
-  const { data: sessions, error } = await supabase
+  // Ambil hanya yang STATUSNYA COMPLETED (Selesai)
+  const { data, error } = await supabase
     .from('quiz_sessions')
     .select('score')
     .eq('user_id', user.id)
-    .eq('status', 'completed')
+    .eq('status', 'completed') // <--- Filter Penting!
 
-  if (error || !sessions) return { totalQuiz: 0, avgScore: 0 }
+  if (error || !data || data.length === 0) {
+    return { totalQuiz: 0, avgScore: 0 }
+  }
 
-  const totalQuiz = sessions.length
-  const totalScore = sessions.reduce((acc, curr) => acc + (curr.score || 0), 0)
-  const avgScore = totalQuiz > 0 ? Math.round(totalScore / totalQuiz) : 0
+  const totalQuiz = data.length
+  // Hitung rata-rata dari skor yang ada
+  const totalScore = data.reduce((acc, curr) => acc + (curr.score || 0), 0)
+  const avgScore = Math.round(totalScore / totalQuiz)
 
   return { totalQuiz, avgScore }
 }
@@ -121,91 +125,102 @@ export async function getQuizQuestions(moduleId: string, mode: 'exam' | 'study' 
   return data.sort(() => Math.random() - 0.5)
 }
 
-// 6. Submit Jawaban & Hitung Nilai
+// 6. Submit Jawaban (VERSI DEBUGGING)
 export async function submitQuiz(sessionId: string, answers: Record<string, string>) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
-  // 1. Ambil Kunci Jawaban (Sama seperti sebelumnya)
+  console.log("--- MULAI SUBMIT QUIZ ---")
+  console.log("Session ID:", sessionId)
+  
   const questionIds = Object.keys(answers)
   if (questionIds.length === 0) throw new Error('Tidak ada jawaban')
 
-  const { data: questions } = await supabase
+  // Ambil Soal & Kunci Jawaban
+  const { data: questions, error: qError } = await supabase
     .from('questions')
-    .select('id, options(id, is_correct)')
+    .select('id, content, options(id, text, is_correct)')
     .in('id', questionIds)
 
-  if (!questions) throw new Error('Gagal memuat soal')
+  if (qError || !questions) {
+    console.error("GAGAL AMBIL SOAL:", qError)
+    throw new Error('Gagal memuat soal dari database')
+  }
 
-  // 2. Hitung Skor & Siapkan Data Jawaban
+  console.log(`Berhasil memuat ${questions.length} soal untuk diperiksa.`)
+
   let correctCount = 0
   const answersData = []
-  const masteryUpdates = [] // <--- Array untuk update mastery
+  const masteryUpdates = []
 
+  // LOOP PEMERIKSAAN JAWABAN
   for (const qId of questionIds) {
-    const selectedOptId = answers[qId]
+    const selectedOptId = answers[qId] // Jawaban User
     const question = questions.find(q => q.id === qId)
-    const correctOption = question?.options.find(o => o.is_correct)
-    const isCorrect = correctOption?.id === selectedOptId
+    
+    if (question && question.options) {
+        // Cari Kunci Jawaban di Database
+        const correctOption = question.options.find(o => o.is_correct)
+        
+        // Cek Apakah Cocok?
+        const isCorrect = correctOption?.id === selectedOptId
 
-    if (isCorrect) correctCount++
+        // --- CCTV LOG (Cek Terminal VS Code Anda nanti) ---
+        console.log(`Soal: ${question.content.substring(0, 20)}...`)
+        console.log(`   - Jawaban User ID: ${selectedOptId}`)
+        console.log(`   - Kunci Jawaban ID: ${correctOption?.id}`)
+        console.log(`   - HASIL: ${isCorrect ? "BENAR ✅" : "SALAH ❌"}`)
+        // --------------------------------------------------
 
-    answersData.push({
-      session_id: sessionId,
-      question_id: qId,
-      selected_option_id: selectedOptId,
-      is_correct: isCorrect
-    })
+        if (isCorrect) correctCount++
 
-    // LOGIC MASTERY: Hanya jika BENAR, kita siapkan update
-    if (isCorrect) {
-      masteryUpdates.push(qId)
+        answersData.push({
+            session_id: sessionId,
+            question_id: qId,
+            selected_option_id: selectedOptId,
+            is_correct: isCorrect
+        })
+
+        if (isCorrect) masteryUpdates.push(qId)
+    } else {
+        console.error(`Soal ID ${qId} tidak ditemukan atau tidak punya opsi!`)
     }
   }
 
+  // Hitung Skor
   const score = Math.round((correctCount / questionIds.length) * 100)
+  console.log(`SKOR AKHIR: ${score} (Benar ${correctCount} dari ${questionIds.length})`)
 
-  // 3. Simpan Jawaban ke Database
+  // Simpan Jawaban
   await supabase.from('quiz_answers').insert(answersData)
 
-  // 4. Update Status Sesi
-  await supabase
+  // Update Skor
+  const { error: updateError } = await supabase
     .from('quiz_sessions')
     .update({ status: 'completed', score, completed_at: new Date().toISOString() })
     .eq('id', sessionId)
 
-  // 5. EKSEKUSI MASTERY (Fitur Baru)
-  // Kita loop satu per satu soal yang benar untuk di-upsert (Insert or Update)
-  // Logic: Jika belum ada -> insert 1. Jika sudah ada -> tambah 1.
+  if (updateError) {
+      console.error("FATAL: Gagal simpan skor ke database!", updateError)
+  } else {
+      console.log("SUKSES: Skor berhasil disimpan ke database.")
+  }
+
+  // Update Mastery (Hafalan)
   for (const qId of masteryUpdates) {
-    // A. Cek data lama
     const { data: existing } = await supabase
       .from('user_mastery')
       .select('correct_count')
-      .eq('user_id', user.id)
-      .eq('question_id', qId)
-      .single()
+      .eq('user_id', user.id).eq('question_id', qId).single()
 
     if (existing) {
-      // Update: Tambah 1
-      await supabase
-        .from('user_mastery')
-        .update({ 
-          correct_count: existing.correct_count + 1,
-          last_answered_at: new Date().toISOString()
-        })
-        .eq('user_id', user.id)
-        .eq('question_id', qId)
+      await supabase.from('user_mastery')
+        .update({ correct_count: existing.correct_count + 1, last_answered_at: new Date().toISOString() })
+        .eq('user_id', user.id).eq('question_id', qId)
     } else {
-      // Insert Baru: Set 1
-      await supabase
-        .from('user_mastery')
-        .insert({ 
-          user_id: user.id, 
-          question_id: qId, 
-          correct_count: 1 
-        })
+      await supabase.from('user_mastery')
+        .insert({ user_id: user.id, question_id: qId, correct_count: 1 })
     }
   }
 
@@ -270,7 +285,7 @@ export async function getQuizResult(sessionId: string) {
   return { session, reviews: answers }
 }
 
-// 8. Ambil Riwayat Kuis User (Untuk Dashboard)
+// 8. Ambil Riwayat Kuis User
 export async function getQuizHistory() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -297,6 +312,7 @@ export async function getQuizHistory() {
       )
     `)
     .eq('user_id', user.id)
+    .eq('status', 'completed') // <--- TAMBAHAN PENTING: HANYA YANG SELESAI
     .order('created_at', { ascending: false })
 
   if (error) {
