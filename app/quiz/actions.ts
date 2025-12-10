@@ -123,76 +123,94 @@ export async function getQuizQuestions(moduleId: string, mode: 'exam' | 'study' 
 
 // 6. Submit Jawaban & Hitung Nilai
 export async function submitQuiz(sessionId: string, answers: Record<string, string>) {
-  console.log("--- MULAI SUBMIT ---")
   const supabase = await createClient()
-  
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Unauthorized')
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
 
-    // A. Ambil Kunci Jawaban
-    const questionIds = Object.keys(answers)
-    if (questionIds.length === 0) {
-       await supabase.from('quiz_sessions').update({
-          status: 'completed', score: 0, finished_at: new Date().toISOString()
-       }).eq('id', sessionId)
-       return { score: 0 }
+  // 1. Ambil Kunci Jawaban (Sama seperti sebelumnya)
+  const questionIds = Object.keys(answers)
+  if (questionIds.length === 0) throw new Error('Tidak ada jawaban')
+
+  const { data: questions } = await supabase
+    .from('questions')
+    .select('id, options(id, is_correct)')
+    .in('id', questionIds)
+
+  if (!questions) throw new Error('Gagal memuat soal')
+
+  // 2. Hitung Skor & Siapkan Data Jawaban
+  let correctCount = 0
+  const answersData = []
+  const masteryUpdates = [] // <--- Array untuk update mastery
+
+  for (const qId of questionIds) {
+    const selectedOptId = answers[qId]
+    const question = questions.find(q => q.id === qId)
+    const correctOption = question?.options.find(o => o.is_correct)
+    const isCorrect = correctOption?.id === selectedOptId
+
+    if (isCorrect) correctCount++
+
+    answersData.push({
+      session_id: sessionId,
+      question_id: qId,
+      selected_option_id: selectedOptId,
+      is_correct: isCorrect
+    })
+
+    // LOGIC MASTERY: Hanya jika BENAR, kita siapkan update
+    if (isCorrect) {
+      masteryUpdates.push(qId)
     }
-
-    const { data: correctOptions, error: optError } = await supabase
-      .from('options')
-      .select('question_id, id')
-      .in('question_id', questionIds)
-      .eq('is_correct', true)
-    
-    if (optError) throw new Error("Gagal ambil kunci jawaban: " + optError.message)
-
-    // B. Hitung Skor
-    const keyMap: Record<string, string> = {}
-    correctOptions?.forEach(opt => { keyMap[opt.question_id] = opt.id })
-
-    let correctCount = 0
-    const totalQuestions = questionIds.length
-    const detailAnswersToInsert = []
-
-    for (const [qId, selectedOptId] of Object.entries(answers)) {
-      const isCorrect = keyMap[qId] === selectedOptId
-      if (isCorrect) correctCount++
-
-      detailAnswersToInsert.push({
-        session_id: sessionId,
-        question_id: qId,
-        selected_option_id: selectedOptId,
-        is_correct: isCorrect
-      })
-    }
-
-    const finalScore = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0
-
-    // C. Update Session
-    const { error: updateError } = await supabase
-      .from('quiz_sessions')
-      .update({
-        status: 'completed',
-        score: finalScore,
-        finished_at: new Date().toISOString()
-      })
-      .eq('id', sessionId)
-    
-    if (updateError) throw new Error("Gagal update session: " + updateError.message)
-
-    // D. Insert Jawaban Detail
-    if (detailAnswersToInsert.length > 0) {
-      const { error: insertError } = await supabase.from('quiz_answers').insert(detailAnswersToInsert)
-      if (insertError) throw new Error("Gagal insert jawaban: " + insertError.message)
-    }
-
-    return { score: finalScore }
-
-  } catch (error: any) {
-    console.error("CRITICAL ERROR di submitQuiz:", error)
-    throw error
   }
+
+  const score = Math.round((correctCount / questionIds.length) * 100)
+
+  // 3. Simpan Jawaban ke Database
+  await supabase.from('quiz_answers').insert(answersData)
+
+  // 4. Update Status Sesi
+  await supabase
+    .from('quiz_sessions')
+    .update({ status: 'completed', score, completed_at: new Date().toISOString() })
+    .eq('id', sessionId)
+
+  // 5. EKSEKUSI MASTERY (Fitur Baru)
+  // Kita loop satu per satu soal yang benar untuk di-upsert (Insert or Update)
+  // Logic: Jika belum ada -> insert 1. Jika sudah ada -> tambah 1.
+  for (const qId of masteryUpdates) {
+    // A. Cek data lama
+    const { data: existing } = await supabase
+      .from('user_mastery')
+      .select('correct_count')
+      .eq('user_id', user.id)
+      .eq('question_id', qId)
+      .single()
+
+    if (existing) {
+      // Update: Tambah 1
+      await supabase
+        .from('user_mastery')
+        .update({ 
+          correct_count: existing.correct_count + 1,
+          last_answered_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id)
+        .eq('question_id', qId)
+    } else {
+      // Insert Baru: Set 1
+      await supabase
+        .from('user_mastery')
+        .insert({ 
+          user_id: user.id, 
+          question_id: qId, 
+          correct_count: 1 
+        })
+    }
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true, sessionId }
 }
 
 // 7. Ambil Detail Hasil Kuis (Untuk Halaman Review)
@@ -316,4 +334,129 @@ export async function getCustomQuizQuestions(moduleIds: string[], limit: number,
   
   // 2. Potong sesuai Limit yang diminta user
   return shuffled.slice(0, limit)
+}
+
+// FUNGSI BARU: Ambil Soal Per Matkul (Filter Mastery < 3)
+export async function getSmartSubjectQuestions(subjectId: string, limit: number = 20) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  // 1. Ambil ID Soal yang SUDAH MASTER (Benar >= 3x)
+  const { data: mastered } = await supabase
+    .from('user_mastery')
+    .select('question_id')
+    .eq('user_id', user.id)
+    .gte('correct_count', 3) // Batas 3 kali benar
+
+  const masteredIds = mastered?.map(m => m.question_id) || []
+
+  // 2. Ambil Soal dari Mata Kuliah Tersebut
+  // Kita harus join: Questions -> Modules -> Sources -> Subjects
+  // Karena Supabase Query agak terbatas untuk deep filter + not in sekaligus,
+  // kita ambil soalnya dulu lalu filter di server (atau pakai RPC function kalau mau canggih, tapi ini cukup untuk MVP).
+  
+  // Ambil semua modul di matkul ini
+  const { data: modules } = await supabase
+    .from('modules')
+    .select('id, source:sources!inner(subject_id)')
+    .eq('source.subject_id', subjectId)
+  
+  const moduleIds = modules?.map(m => m.id) || []
+
+  if (moduleIds.length === 0) return []
+
+  // Ambil Soal yang TIDAK ADA di daftar Mastered
+  let query = supabase
+    .from('questions')
+    .select('id, content, options(id, text, is_correct)')
+    .in('module_id', moduleIds)
+  
+  if (masteredIds.length > 0) {
+    // Filter out mastered questions
+    // Note: Supabase JS library .not('id', 'in', ...) support array
+    query = query.not('id', 'in', `(${masteredIds.join(',')})`)
+  }
+
+  const { data: questions, error } = await query
+
+  if (error || !questions) return []
+
+  // 3. Acak & Limit
+  const shuffled = questions.sort(() => Math.random() - 0.5)
+  return shuffled.slice(0, limit)
+}
+
+// FUNGSI BARU: Ambil Statistik Dashboard (8 Kartu)
+export async function getDashboardStats() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  // 1. Ambil Semua Matkul
+  const { data: subjects } = await supabase
+    .from('subjects')
+    .select('id, name, code')
+    .order('code')
+
+  if (!subjects) return []
+
+  // 2. Hitung Statistik per Matkul
+  // Ini agak berat kalau datanya jutaan, tapi untuk MVP ini oke.
+  const stats = await Promise.all(subjects.map(async (sub) => {
+    
+    // A. Cari ID Modul milik Matkul ini
+    const { data: mods } = await supabase
+      .from('modules')
+      .select('id, source:sources!inner(subject_id)')
+      .eq('source.subject_id', sub.id)
+    const modIds = mods?.map(m => m.id) || []
+
+    if (modIds.length === 0) return { ...sub, total: 0, mastered: 0, remaining: 0 }
+
+    // B. Hitung Total Soal di Matkul ini
+    const { count: totalQuestions } = await supabase
+      .from('questions')
+      .select('id', { count: 'exact', head: true })
+      .in('module_id', modIds)
+
+    // C. Hitung Soal yang sudah Master (>= 3x Benar) di Matkul ini
+    // Kita perlu join user_mastery -> questions -> modules
+    // Cara gampang: Ambil mastery user, filter question_id yang ada di modIds
+    const { data: userMastery } = await supabase
+      .from('user_mastery')
+      .select('question_id')
+      .eq('user_id', user.id)
+      .gte('correct_count', 3)
+      
+    // Filter manual: Cek apakah question_id milik userMastery ada di dalam database soal matkul ini?
+    // Agar efisien, kita balik: Ambil ID soal matkul ini, cek berapa yang ada di userMastery
+    // (Untuk MVP, kita pakai estimasi query mastery yang lebih sederhana)
+    
+    // Query Soal Master spesifik Matkul ini
+    const { count: masteredCount } = await supabase
+      .from('user_mastery')
+      .select('question_id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('correct_count', 3)
+      .in('question_id', (
+         // Subquery: Ambil semua ID soal di matkul ini
+         // (Supabase JS client limitasi di subquery raw, kita akali dengan logic JS di atas atau asumsi)
+         // OK, cara paling aman tanpa raw SQL complex:
+         // Kita sudah punya modIds. Kita query soal IDs.
+         await supabase.from('questions').select('id').in('module_id', modIds).then(res => res.data?.map(q => q.id) || [])
+      ))
+
+    const total = totalQuestions || 0
+    const master = masteredCount || 0
+    
+    return {
+      ...sub,
+      total: total,
+      mastered: master,
+      remaining: Math.max(0, total - master)
+    }
+  }))
+
+  return stats
 }

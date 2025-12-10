@@ -1,187 +1,116 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import { getUserStats, getSubjects, getQuizHistory } from '@/app/quiz/actions'
-import QuizSelector from '@/components/quiz-selector'
+import { getDashboardStats, getUserStats, getQuizHistory } from '@/app/quiz/actions'
+import { Play, CheckCircle, BookOpen, BarChart3 } from 'lucide-react'
 import Link from 'next/link'
-import { Trophy, BookOpen, Clock, ChevronRight, History } from 'lucide-react'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-
-  // 1. Cek User Login
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 2. Fetch Semua Data secara Paralel (Stats, Subjects, History)
-  const [stats, subjects, history] = await Promise.all([
-    getUserStats(),
-    getSubjects(),
-    getQuizHistory()
+  // Load Data Paralel
+  const [userStats, subjectsStats, history] = await Promise.all([
+    getUserStats(),     // Statistik Global (Total Kuis, Rata2)
+    getDashboardStats(), // Statistik Per Matkul (8 Kartu)
+    getQuizHistory()    // Riwayat Terakhir
   ])
 
   return (
-    <div className="space-y-8 pb-10">
-      {/* Header */}
+    <div className="space-y-10 pb-10">
+      
+      {/* HEADER & STATS UTAMA */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard Peserta</h1>
-        <p className="text-gray-600">Selamat datang kembali, siap untuk latihan hari ini?</p>
-      </div>
-
-      {/* Statistik Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="overflow-hidden rounded-lg bg-white shadow border border-gray-100">
-          <div className="p-5 flex items-center">
-            <div className="shrink-0 bg-indigo-100 rounded-md p-3">
-              <BookOpen className="h-6 w-6 text-primary" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="truncate text-sm font-medium text-gray-500">Total Kuis Selesai</dt>
-                <dd className="text-2xl font-semibold text-gray-900">{stats.totalQuiz}</dd>
-              </dl>
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard Progres</h1>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center">
+            <div className="p-3 bg-indigo-100 rounded-lg text-indigo-600 mr-4"><BookOpen /></div>
+            <div>
+              <p className="text-sm text-gray-500">Total Kuis Dikerjakan</p>
+              <h3 className="text-2xl font-bold">{userStats.totalQuiz}</h3>
             </div>
           </div>
-        </div>
-
-        <div className="overflow-hidden rounded-lg bg-white shadow border border-gray-100">
-          <div className="p-5 flex items-center">
-            <div className="shrink-0 bg-green-100 rounded-md p-3">
-              <Trophy className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="truncate text-sm font-medium text-gray-500">Rata-rata Nilai</dt>
-                <dd className="text-2xl font-semibold text-gray-900">{stats.avgScore}</dd>
-              </dl>
+          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center">
+            <div className="p-3 bg-green-100 rounded-lg text-green-600 mr-4"><BarChart3 /></div>
+            <div>
+              <p className="text-sm text-gray-500">Rata-Rata Nilai</p>
+              <h3 className="text-2xl font-bold">{userStats.avgScore}</h3>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bagian Utama: Selector & Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Kolom Kiri: Quiz Selector & History */}
-        <div className="lg:col-span-2 space-y-8">
-          
-          {/* 1. Quiz Selector */}
-          <QuizSelector initialSubjects={subjects} />
+      {/* --- BAGIAN UTAMA: 8 KARTU MATA KULIAH --- */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+          <CheckCircle className="w-5 h-5 mr-2 text-indigo-600" />
+          Target Penguasaan Materi
+        </h2>
+        <p className="text-gray-500 mb-6">
+          Jawab benar 3x agar soal dianggap "Master". Kartu ini menunjukkan sisa soal yang belum dikuasai.
+        </p>
 
-          {/* 2. TABEL RIWAYAT (FITUR BARU) */}
-          <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
-            <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                <History className="w-5 h-5 mr-2 text-gray-500" />
-                Riwayat Aktivitas
-              </h3>
-            </div>
-            
-            <div className="overflow-x-auto">
-              {history.length === 0 ? (
-                <div className="p-10 text-center text-gray-500">
-                  <p>Belum ada riwayat ujian. Yuk mulai kerjakan kuis pertama!</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {subjectsStats.map((sub: any) => {
+            const progress = sub.total > 0 ? Math.round((sub.mastered / sub.total) * 100) : 0
+            const isCompleted = sub.remaining === 0 && sub.total > 0
+
+            return (
+              <div key={sub.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                <div className="p-5 grow">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded uppercase tracking-wider">
+                      {sub.code}
+                    </span>
+                    {isCompleted && <CheckCircle className="w-5 h-5 text-green-500" />}
+                  </div>
+                  
+                  <h3 className="font-bold text-gray-900 mb-1 line-clamp-2 [3rem]">
+                    {sub.name}
+                  </h3>
+                  
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Progress</span>
+                      <span className="font-medium text-gray-900">{progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div 
+                        className="bg-indigo-600 h-2 rounded-full transition-all duration-500" 
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>Master: {sub.mastered}</span>
+                      <span>Sisa: <strong className="text-red-500">{sub.remaining}</strong></span>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mata Kuliah / Modul</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th scope="col" className="relative px-6 py-3"><span className="sr-only">Detail</span></th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {history.map((session: any) => {
-                      // Formatting Tanggal
-                      const date = new Date(session.created_at).toLocaleString('id-ID', {
-                        day: 'numeric', 
-                        month: 'short', 
-                        year: 'numeric',
-                        hour: '2-digit', 
-                        minute: '2-digit' // <-- Ini yang memunculkan jam
-                      })
-                      
-                      // Formatting Status
-                      const isCompleted = session.status === 'completed'
-                      const statusClass = isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                      const statusLabel = isCompleted ? 'Selesai' : 'Proses'
 
-                      // Ambil Data Join (Type Safety diabaikan sebentar untuk kemudahan)
-// Logic Tampilan Judul
-let displaySubject = 'Unknown Subject'
-let displayModule = 'Unknown Module'
-
-if (session.quiz_title) {
-  // Jika ini Kuis Custom (ada quiz_title), kita pecah judulnya
-  // Format tadi: "KODE: Modul A, Modul B"
-  const parts = session.quiz_title.split(':')
-  if (parts.length >= 2) {
-    displaySubject = parts[0].trim() // Kode Matkul
-    displayModule = parts[1].trim()  // Daftar Modul
-  } else {
-    displaySubject = 'Kuis Custom'
-    displayModule = session.quiz_title
-  }
-} else if (session.module) {
-  // Jika Kuis Lama (Standard)
-  displaySubject = session.module.source?.subject?.name || 'Unknown'
-  displayModule = session.module.name || 'Unknown'
-}
-
-                      return (
-                        <tr key={session.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div className="flex items-center">
-                              <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                              {date}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{displaySubject}</div>
-                            <div className="text-sm text-gray-500">{displayModule}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-bold text-gray-900">{session.score ?? '-'}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}`}>
-                              {statusLabel}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            {isCompleted ? (
-                              <Link href={`/result/${session.id}`} className="text-primary hover:text-indigo-900 flex items-center justify-end">
-                                Detail <ChevronRight className="w-4 h-4 ml-1" />
-                              </Link>
-                            ) : (
-                              <span className="text-gray-400 cursor-not-allowed">Lanjut</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Kolom Kanan: Sidebar Info */}
-        <div className="bg-blue-50 rounded-lg p-6 border border-blue-100 h-fit">
-          <h3 className="font-semibold text-blue-900 mb-4 flex items-center">
-            <span className="bg-blue-200 text-blue-800 text-xs font-bold px-2 py-0.5 rounded mr-2">TIPS</span>
-            Cara Belajar Efektif
-          </h3>
-          <ul className="list-disc list-inside text-sm text-blue-800 space-y-3 leading-relaxed">
-            <li>Kerjakan soal tanpa melihat kunci jawaban terlebih dahulu.</li>
-            <li>Gunakan fitur <strong>Review</strong> di riwayat untuk membaca pembahasan soal yang salah.</li>
-            <li>Ulangi modul yang nilainya masih di bawah 70.</li>
-            <li>Istirahat 5 menit setiap 25 menit belajar (Teknik Pomodoro).</li>
-          </ul>
+                <div className="p-4 bg-gray-50 border-t border-gray-100">
+                  {sub.remaining > 0 ? (
+                    <Link 
+                      href={`/quiz/start-custom?mode=exam&subjectId=${sub.id}&count=20`}
+                      className="flex items-center justify-center w-full py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Latihan (20 Soal)
+                    </Link>
+                  ) : (
+                    <button disabled className="w-full py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium cursor-default">
+                      Materi Selesai! 🎉
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
+
+      {/* --- RIWAYAT (TABEL LAMA) --- */}
+      {/* (Anda bisa menaruh tabel riwayat yang lama di sini jika masih mau ditampilkan) */}
+      
     </div>
   )
 }
