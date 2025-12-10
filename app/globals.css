@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* 1. Mendaftarkan Variable ke Tailwind (Cara Baru v4) */
+@theme {
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  
+  /* Mendaftarkan Radius */
+  --radius: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/* 2. Mengisi Nilai Variable Default */
+@layer base {
+  :root {
+    --background: #ffffff;
+    --foreground: #171717;
+    
+    /* Warna Default (Indigo) */
+    --color-primary: #4f46e5; 
+    --color-primary-hover: #4338ca;
+    --radius: 8px;
+  }
+}
+
+/* Opsional: Style scrollbar agar lebih rapi */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

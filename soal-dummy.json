@@ -1,0 +1,29 @@
+[
+  {
+    "subject": "Pengetahuan Umum",
+    "source": "Bank Soal 2024",
+    "module": "Sejarah Indonesia",
+    "questions": [
+      {
+        "text": "Siapakah proklamator kemerdekaan Indonesia?",
+        "explanation": "Soekarno dan Hatta memproklamasikan kemerdekaan pada 17 Agustus 1945.",
+        "options": [
+          { "text": "Soekarno - Hatta", "isCorrect": true },
+          { "text": "Jenderal Sudirman", "isCorrect": false },
+          { "text": "Pangeran Diponegoro", "isCorrect": false },
+          { "text": "Budi Utomo", "isCorrect": false }
+        ]
+      },
+      {
+        "text": "Apa ibukota Jawa Tengah?",
+        "explanation": "Semarang adalah ibukota provinsi Jawa Tengah.",
+        "options": [
+          { "text": "Surabaya", "isCorrect": false },
+          { "text": "Bandung", "isCorrect": false },
+          { "text": "Semarang", "isCorrect": true },
+          { "text": "Yogyakarta", "isCorrect": false }
+        ]
+      }
+    ]
+  }
+]
