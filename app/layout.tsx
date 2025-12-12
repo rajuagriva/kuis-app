@@ -3,6 +3,7 @@ import "./globals.css";
 import ThemeProvider from "@/components/theme-provider";
 import Navbar from "@/components/navbar"; 
 import { createClient } from "@/utils/supabase/server";
+import 'katex/dist/katex.min.css';
 
 export const metadata: Metadata = {
   title: "Kuis App",
