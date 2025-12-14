@@ -476,3 +476,105 @@ export async function getDashboardStats() {
 
   return stats
 }
+// --- UPDATE FINAL: DYNAMIC MASTERY THRESHOLD ---
+
+export async function getDetailedStats() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { global: null, subjects: [] }
+
+  // 1. Ambil Subjects + Threshold-nya
+  const { data: subjects } = await supabase
+    .from('subjects')
+    .select('id, name, code, mastery_threshold') // <-- Ambil kolom baru
+  if (!subjects) return { global: null, subjects: [] }
+
+  // 2. Ambil Semua Soal
+  const { data: allQuestions } = await supabase
+    .from('questions')
+    .select('id, module:modules!inner(source:sources!inner(subject_id))')
+  
+  // 3. Ambil Mastery (HAPUS filter .gte 3, kita filter manual nanti)
+  const { data: allMastery } = await supabase
+    .from('user_mastery')
+    .select('correct_count, question_id, question:questions!inner(module:modules!inner(source:sources!inner(subject_id)))')
+    .eq('user_id', user.id)
+    // .gte('correct_count', 3) <-- INI KITA HAPUS AGAR BISA DINAMIS
+
+  // 4. Ambil Sesi (Deep Scan Logic)
+  const { data: sessions } = await supabase
+    .from('quiz_sessions')
+    .select('id, score')
+    .eq('user_id', user.id)
+    .eq('status', 'completed')
+
+  // Mapping Session -> Subject (Sama seperti sebelumnya)
+  const sessionIds = sessions?.map(s => s.id) || []
+  let sessionSubjectMap: Record<string, string> = {}
+  if (sessionIds.length > 0) {
+    const { data: answers } = await supabase
+      .from('quiz_answers')
+      .select(`session_id, question:questions!inner(module:modules!inner(source:sources!inner(subject_id)))`)
+      .in('session_id', sessionIds)
+    
+    answers?.forEach((ans: any) => {
+      if (ans.session_id && ans.question?.module?.source?.subject_id) {
+        sessionSubjectMap[ans.session_id] = ans.question.module.source.subject_id
+      }
+    })
+  }
+
+  // 5. OLAH DATA FINAL (DENGAN LOGIKA BARU)
+  let globalTotalQ = 0
+  let globalMastered = 0
+
+  const stats = subjects.map(sub => {
+    // Ambil Target Master khusus matkul ini (Default 3 jika null)
+    const threshold = sub.mastery_threshold || 3
+
+    // A. Filter Soal
+    const subQuestions = allQuestions?.filter((q: any) => q.module?.source?.subject_id === sub.id) || []
+    
+    // B. Filter Mastery (Gunakan Threshold Dinamis)
+    const subMastery = allMastery?.filter((m: any) => {
+       const isBelong = m.question?.module?.source?.subject_id === sub.id
+       const isMaster = (m.correct_count || 0) >= threshold // <-- LOGIKA DINAMIS
+       return isBelong && isMaster
+    }) || []
+    
+    // C. Filter Sesi
+    const subSessions = sessions?.filter((s: any) => sessionSubjectMap[s.id] === sub.id) || []
+    const totalQuiz = subSessions.length
+    const avgScore = totalQuiz > 0 
+      ? Math.round(subSessions.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / totalQuiz)
+      : 0
+
+    // Akumulasi Global
+    globalTotalQ += subQuestions.length
+    globalMastered += subMastery.length
+
+    return {
+      ...sub,
+      totalQuestions: subQuestions.length,
+      masteredQuestions: subMastery.length,
+      progress: subQuestions.length > 0 ? Math.round((subMastery.length / subQuestions.length) * 100) : 0,
+      remaining: Math.max(0, subQuestions.length - subMastery.length),
+      quizCount: totalQuiz,
+      avgScore: avgScore,
+      masteryThreshold: threshold // Info tambahan buat UI kalau perlu
+    }
+  })
+
+  // 6. Global Stats
+  const globalProgress = globalTotalQ > 0 ? Math.round((globalMastered / globalTotalQ) * 100) : 0
+
+  return {
+    global: {
+      totalQuestions: globalTotalQ,
+      mastered: globalMastered,
+      progress: globalProgress,
+      remaining: globalTotalQ - globalMastered
+    },
+    subjects: stats
+  }
+}

@@ -1,47 +1,50 @@
 import type { Metadata } from "next";
-import "./globals.css"; 
-import ThemeProvider from "@/components/theme-provider";
+import "./globals.css";
+import ThemeProvider from "@/components/theme-provider"; // Pastikan import ini jalan
 import Navbar from "@/components/navbar"; 
 import { createClient } from "@/utils/supabase/server";
-import 'katex/dist/katex.min.css';
+import 'katex/dist/katex.min.css'
 
 export const metadata: Metadata = {
-  title: "Kuis App",
-  description: "Aplikasi Ujian Online",
+  title: "Aplikasi Kuis Pintar",
+  description: "Platform belajar dengan sistem analisis cerdas",
 };
+
+// Fungsi ambil data tema
+async function getThemeConfig() {
+  const supabase = await createClient()
+  try {
+    const { data } = await supabase
+      .from('site_settings')
+      .select('theme_color') // Ambil kolom theme_color
+      .single()
+    
+    // PENTING: Return object harus persis { theme_color: string }
+    return { theme_color: data?.theme_color || '#4f46e5' }
+  } catch (error) {
+    return { theme_color: '#4f46e5' }
+  }
+}
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = await createClient()
-  
-  // --- PERBAIKAN LOGIKA TEMA ---
-  // Jangan ambil tema user yang login, tapi ambil tema milik ADMIN.
-  // Kita cari profil pertama yang role-nya 'admin'.
-  const { data: adminProfile } = await supabase
-    .from('profiles')
-    .select('theme_config')
-    .eq('role', 'admin')
-    .limit(1) // Ambil satu admin saja sebagai patokan
-    .single()
-
-  // Gunakan config dari admin tersebut untuk seluruh aplikasi
-  const themeConfig = adminProfile?.theme_config || null
-  // -----------------------------
+  const themeConfig = await getThemeConfig()
 
   return (
     <html lang="en">
-      <body className="antialiased bg-gray-50 text-gray-900 font-sans">
-        {/* Inject Warna Tema Global (Milik Admin) */}
+      {/* Suppress Hydration Warning untuk mencegah error ekstensi browser */}
+      <body 
+        className="antialiased bg-gray-50 text-gray-900 font-sans"
+        suppressHydrationWarning={true} 
+      >
         <ThemeProvider themeConfig={themeConfig} />
         
-        {/* Navbar */}
-        <Navbar /> 
+        <Navbar />
         
-        {/* Konten Halaman */}
-        <main className="min-h-[calc(100vh-64px)]">
+        <main className="min-h-screen pt-4">
           {children}
         </main>
       </body>

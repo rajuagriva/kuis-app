@@ -1,15 +1,15 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/server'
-import { LogOut, LayoutDashboard, ShieldCheck, User, Menu } from 'lucide-react'
+import { LogOut, LayoutDashboard, ShieldCheck, BookOpen } from 'lucide-react' // Tambah icon BookOpen
 
 export default async function Navbar() {
   const supabase = await createClient()
 
   // 1. Cek User Login
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null // Jangan tampilkan navbar di halaman login
+  if (!user) return null 
 
-  // 2. Cek Role User (Admin atau User?)
+  // 2. Cek Role User
   const { data: profile } = await supabase
     .from('profiles')
     .select('role, full_name')
@@ -38,9 +38,14 @@ export default async function Navbar() {
             
             <div className="hidden sm:ml-8 sm:flex sm:space-x-8">
               {isAdmin ? (
-                /* === MENU KHUSUS ADMIN === */
+                /* === MENU KHUSUS ADMIN (LENGKAP) === */
                 <>
                   <NavLink href="/admin/dashboard">Dashboard</NavLink>
+                  
+                  {/* Menu Baru Disisipkan Disini 👇 */}
+                  <NavLink href="/admin/subjects">Atur Matkul</NavLink> 
+                  
+                  {/* Menu Lama Tetap Ada 👇 */}
                   <NavLink href="/admin/upload">Import Soal</NavLink>
                   <NavLink href="/admin/questions">Edit Soal</NavLink>
                   <NavLink href="/admin/theme">Tampilan</NavLink>
@@ -49,7 +54,6 @@ export default async function Navbar() {
                 /* === MENU KHUSUS PESERTA === */
                 <>
                   <NavLink href="/dashboard">Dashboard</NavLink>
-                  {/* Tambahkan menu lain jika ada, misal: Riwayat */}
                 </>
               )}
             </div>

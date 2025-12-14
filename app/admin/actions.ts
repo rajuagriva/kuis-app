@@ -258,3 +258,42 @@ export async function deleteEntity(table: 'subjects' | 'sources' | 'modules', id
   revalidatePath('/admin/questions')
   return { success: true }
 }
+
+// --- UPDATE SUBJECT (Termasuk Mastery Threshold) ---
+export async function updateSubject(id: string, name: string, code: string, masteryThreshold: number) {
+  const supabase = await createClient()
+
+  // Cek Auth Admin
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('subjects')
+    .update({
+      name,
+      code,
+      mastery_threshold: masteryThreshold // <-- Kolom baru di database
+    })
+    .eq('id', id)
+
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/admin/subjects') // Asumsi path halaman admin subject
+  return { success: true }
+}
+
+// --- AMBIL DAFTAR SUBJECT UNTUK ADMIN ---
+export async function getAdminSubjects() {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('id, name, code, mastery_threshold')
+    .order('name')
+
+  if (error) {
+    console.error('Error fetching admin subjects:', error.message)
+    return []
+  }
+  return data
+}
