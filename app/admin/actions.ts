@@ -129,6 +129,7 @@ export async function uploadQuizData(prevState: any, formData: FormData) {
     return { success: false, message: error.message || 'Terjadi kesalahan sistem.' }
   }
 }
+
 // --- UPDATE TEMA ---
 export async function updateTheme(config: { color: string; radius: number }) {
   const supabase = await createClient()
@@ -152,11 +153,10 @@ export async function updateTheme(config: { color: string; radius: number }) {
 
 // --- MANAJEMEN SOAL (CRUD) ---
 
-// 1. Ambil Daftar Modul untuk Dropdown (PERBAIKAN: Tambah ID di select)
+// 1. Ambil Daftar Modul untuk Dropdown
 export async function getAdminModules() {
   const supabase = await createClient()
   
-  // Perbaikan: Kita tambahkan 'id' di dalam source dan subject
   const { data, error } = await supabase
     .from('modules')
     .select(`
@@ -186,7 +186,7 @@ export async function getQuestionsByModule(moduleId: string) {
 
   const { data, error } = await supabase
     .from('questions')
-    .select('id, content, explanation') // Kita ambil content & explanation saja untuk diedit
+    .select('id, content, explanation')
     .eq('module_id', moduleId)
     .order('created_at', { ascending: true })
 
@@ -235,7 +235,7 @@ export async function deleteQuestion(id: string) {
   return { success: true }
 }
 
-// FUNGSI BARU: Hapus Entity (Subject/Source/Module)
+// Hapus Entity (Subject/Source/Module)
 export async function deleteEntity(table: 'subjects' | 'sources' | 'modules', id: string) {
   const supabase = await createClient()
 
@@ -259,7 +259,7 @@ export async function deleteEntity(table: 'subjects' | 'sources' | 'modules', id
   return { success: true }
 }
 
-// --- UPDATE SUBJECT (Termasuk Mastery Threshold) ---
+// --- UPDATE SUBJECT (FIX CACHING ISSUE) ---
 export async function updateSubject(id: string, name: string, code: string, masteryThreshold: number) {
   const supabase = await createClient()
 
@@ -272,13 +272,17 @@ export async function updateSubject(id: string, name: string, code: string, mast
     .update({
       name,
       code,
-      mastery_threshold: masteryThreshold // <-- Kolom baru di database
+      mastery_threshold: masteryThreshold
     })
     .eq('id', id)
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/admin/subjects') // Asumsi path halaman admin subject
+  // REVALIDATE AGAR DASHBOARD LANGSUNG BERUBAH
+  revalidatePath('/admin/subjects')
+  revalidatePath('/dashboard')      // <-- Refresh Dashboard Peserta
+  revalidatePath('/', 'layout')     // <-- Refresh Layout Utama
+  
   return { success: true }
 }
 
