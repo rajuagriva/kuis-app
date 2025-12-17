@@ -86,14 +86,10 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. GRAFIK TREN */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200" suppressHydrationWarning>
-         <div className="flex items-center mb-6">
-            <BarChart3 className="w-5 h-5 text-gray-400 mr-2" />
-            <h3 className="font-bold text-gray-700">Tren Nilai & Konsistensi</h3>
-         </div>
-         <ScoreChart data={history} />
-      </div>
+      {/* Grafik Tren */}
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+               <ScoreChart data={history} />
+            </div>
 
       <hr className="border-gray-200 border-dashed" />
 

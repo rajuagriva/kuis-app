@@ -3,13 +3,39 @@
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-// 1. Ambil semua mata kuliah
+// --- HELPER: AC & DISTRIBUSI SOAL (STRATIFIED SAMPLING) ---
+function shuffleArray<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+// ============================================================================
+// 1. GET SUBJECTS (FILTERED BY ENROLLMENT)
+// ============================================================================
 export async function getSubjects() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  // 1. Cek dulu user terdaftar di matkul apa saja
+  const { data: enrollment } = await supabase
+    .from('student_subjects')
+    .select('subject_id')
+    .eq('user_id', user.id)
   
+  // Jika tidak ada enrollment, return kosong
+  if (!enrollment || enrollment.length === 0) return []
+
+  const allowedSubjectIds = enrollment.map(e => e.subject_id)
+
+  // 2. Ambil hanya subject yang ID-nya ada di daftar enrollment
   const { data, error } = await supabase
     .from('subjects')
     .select('id, name, code')
+    .in('id', allowedSubjectIds) // <--- INI KUNCI FILTERNYA
     .order('name')
 
   if (error) {
@@ -19,195 +45,233 @@ export async function getSubjects() {
   return data
 }
 
-// 2. Ambil sumber berdasarkan mata kuliah
+// 2. Ambil sumber (Helper)
 export async function getSources(subjectId: string) {
   const supabase = await createClient()
-  
   const { data, error } = await supabase
     .from('sources')
     .select('id, name, type')
     .eq('subject_id', subjectId)
     .order('name')
-
-  if (error) {
-    console.error('Error fetching sources:', error.message)
-    return []
-  }
+  if (error) return []
   return data
 }
 
-// 3. Ambil modul berdasarkan sumber
+// 3. Ambil modul (Helper)
 export async function getModules(sourceId: string) {
   const supabase = await createClient()
-  
   const { data, error } = await supabase
     .from('modules')
     .select('id, name')
     .eq('source_id', sourceId)
     .order('name')
-
-  if (error) {
-    console.error('Error fetching modules:', error.message)
-    return []
-  }
+  if (error) return []
   return data
 }
 
-// 5. Ambil Statistik User (Total & Rata-rata)
+// 4. Statistik User (Total & Rata-rata - Global)
 export async function getUserStats() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  
   if (!user) return { totalQuiz: 0, avgScore: 0 }
 
-  // Ambil hanya yang STATUSNYA COMPLETED (Selesai)
   const { data, error } = await supabase
     .from('quiz_sessions')
     .select('score')
     .eq('user_id', user.id)
-    .eq('status', 'completed') // <--- Filter Penting!
+    .eq('status', 'completed')
 
-  if (error || !data || data.length === 0) {
-    return { totalQuiz: 0, avgScore: 0 }
-  }
+  if (error || !data || data.length === 0) return { totalQuiz: 0, avgScore: 0 }
 
   const totalQuiz = data.length
-  // Hitung rata-rata dari skor yang ada
   const totalScore = data.reduce((acc, curr) => acc + (curr.score || 0), 0)
   const avgScore = Math.round(totalScore / totalQuiz)
-
   return { totalQuiz, avgScore }
 }
 
-// 5. Ambil Soal untuk Kuis (Mendukung Mode Exam & Study)
-export async function getQuizQuestions(moduleId: string, mode: 'exam' | 'study' = 'exam') {
+// ============================================================================
+// CORE LOGIC: CREATE SESSION & DISTRIBUSI SOAL (SECURED)
+// ============================================================================
+export async function createQuizSession({ 
+  subjectId, moduleIds, count = 10, mode = 'study' 
+}: { 
+  subjectId?: string, moduleIds?: string[], count?: number, mode?: 'study' | 'exam' 
+}) {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
 
-  // QUERY BUILDER:
-  // Jika Exam: HANYA id & text opsi.
-  // Jika Study: Sertakan is_correct & explanation.
-  let selectQuery = ''
+  let targetModuleIds: string[] = []
+  let quizTitle = "Latihan Kuis"
+
+  if (subjectId) {
+    // --- KEAMANAN: Cek apakah user BOLEH ambil subject ini ---
+    const { data: enrolled } = await supabase
+        .from('student_subjects')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('subject_id', subjectId)
+        .single()
+    
+    // Jika tidak ketemu di tabel enrollment, tolak!
+    if (!enrolled) throw new Error('Anda tidak memiliki akses ke mata kuliah ini.')
+    // ---------------------------------------------------------
+
+    const { data: sub } = await supabase.from('subjects').select('name').eq('id', subjectId).single()
+    if (sub) quizTitle = `Latihan: ${sub.name}`
+
+    const { data: modules } = await supabase
+      .from('modules')
+      .select('id, source:sources!inner(subject_id)')
+      .eq('source.subject_id', subjectId)
+    if (modules) targetModuleIds = modules.map(m => m.id)
   
-  if (mode === 'exam') {
-    selectQuery = `
-      id,
-      content,
-      options (
-        id,
-        text
-      )
-    `
-  } else {
-    // Mode Study: Ambil Kunci Jawaban & Pembahasan
-    selectQuery = `
-      id,
-      content,
-      explanation,
-      options (
-        id,
-        text,
-        is_correct
-      )
-    `
+  } else if (moduleIds && moduleIds.length > 0) {
+    quizTitle = "Kuis Custom Modul"
+    targetModuleIds = moduleIds
   }
 
-  const { data, error } = await supabase
+  if (targetModuleIds.length === 0) throw new Error('Tidak ada modul yang dipilih.')
+
+  // Ambil Soal
+  const { data: allQuestions } = await supabase
     .from('questions')
-    .select(selectQuery)
-    .eq('module_id', moduleId)
+    .select('id, module_id')
+    .in('module_id', targetModuleIds)
+  
+  if (!allQuestions || allQuestions.length === 0) throw new Error('Soal tidak ditemukan.')
 
-  if (error) {
-    console.error('Error fetching questions:', error.message)
-    return []
+  // Distribusi Adil (Stratified)
+  const questionsByModule: Record<string, string[]> = {}
+  targetModuleIds.forEach(mid => questionsByModule[mid] = [])
+  allQuestions.forEach(q => {
+    if (questionsByModule[q.module_id]) questionsByModule[q.module_id].push(q.id)
+  })
+
+  const activeModules = targetModuleIds.filter(mid => questionsByModule[mid].length > 0)
+  if (activeModules.length === 0) throw new Error('Modul kosong.')
+
+  let finalSelectedIds: string[] = []
+  let remainingQuota = count
+  
+  while (remainingQuota > 0 && activeModules.length > 0) {
+    const quotaPerModule = Math.ceil(remainingQuota / activeModules.length)
+    for (let i = activeModules.length - 1; i >= 0; i--) {
+      const modId = activeModules[i]
+      const availableQs = questionsByModule[modId]
+      const shuffled = shuffleArray(availableQs)
+      const takeCount = Math.min(quotaPerModule, shuffled.length)
+      const taken = shuffled.slice(0, takeCount)
+      
+      finalSelectedIds.push(...taken)
+      remainingQuota -= taken.length
+      questionsByModule[modId] = shuffled.slice(takeCount)
+      
+      if (questionsByModule[modId].length === 0) {
+        activeModules.splice(i, 1)
+      }
+      if (remainingQuota <= 0) break
+    }
   }
 
-  // Acak urutan soal
-  return data.sort(() => Math.random() - 0.5)
+  // Buat Sesi
+  const { data: session, error: sessionError } = await supabase
+    .from('quiz_sessions')
+    .insert({
+      user_id: user.id,
+      mode: mode, 
+      status: 'in_progress',
+      quiz_title: quizTitle,
+      started_at: new Date().toISOString(),
+      settings: { total_request: count, distribution: 'smart' }
+    })
+    .select().single()
+
+  if (sessionError) throw new Error(sessionError.message)
+
+  // Insert Jawaban Kosong
+  const finalShuffled = shuffleArray(finalSelectedIds)
+  const answerInserts = finalShuffled.map((qid, index) => ({
+    session_id: session.id,
+    question_id: qid,
+    order_number: index + 1,
+    status: 'unanswered'
+  }))
+
+  const { error: ansError } = await supabase.from('quiz_answers').insert(answerInserts)
+  if (ansError) throw new Error(ansError.message)
+
+  return { sessionId: session.id }
 }
 
-// 6. Submit Jawaban (VERSI DEBUGGING)
+// Auto Save
+export async function saveAnswer(sessionId: string, questionId: string, optionId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('quiz_answers')
+    .update({ 
+      selected_option_id: optionId, 
+      status: 'answered',
+      updated_at: new Date().toISOString() 
+    })
+    .eq('session_id', sessionId)
+    .eq('question_id', questionId)
+
+  if (error) throw new Error('Gagal menyimpan jawaban')
+  return { success: true }
+}
+
+// Submit Quiz
 export async function submitQuiz(sessionId: string, answers: Record<string, string>) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
-  console.log("--- MULAI SUBMIT QUIZ ---")
-  console.log("Session ID:", sessionId)
-  
   const questionIds = Object.keys(answers)
   if (questionIds.length === 0) throw new Error('Tidak ada jawaban')
 
-  // Ambil Soal & Kunci Jawaban
-  const { data: questions, error: qError } = await supabase
+  const { data: questions } = await supabase
     .from('questions')
     .select('id, content, options(id, text, is_correct)')
     .in('id', questionIds)
 
-  if (qError || !questions) {
-    console.error("GAGAL AMBIL SOAL:", qError)
-    throw new Error('Gagal memuat soal dari database')
-  }
-
-  console.log(`Berhasil memuat ${questions.length} soal untuk diperiksa.`)
+  if (!questions) throw new Error('Gagal memuat soal')
 
   let correctCount = 0
-  const answersData = []
   const masteryUpdates = []
 
-  // LOOP PEMERIKSAAN JAWABAN
   for (const qId of questionIds) {
-    const selectedOptId = answers[qId] // Jawaban User
+    const selectedOptId = answers[qId]
     const question = questions.find(q => q.id === qId)
     
     if (question && question.options) {
-        // Cari Kunci Jawaban di Database
         const correctOption = question.options.find(o => o.is_correct)
-        
-        // Cek Apakah Cocok?
         const isCorrect = correctOption?.id === selectedOptId
-
-        // --- CCTV LOG (Cek Terminal VS Code Anda nanti) ---
-        console.log(`Soal: ${question.content.substring(0, 20)}...`)
-        console.log(`   - Jawaban User ID: ${selectedOptId}`)
-        console.log(`   - Kunci Jawaban ID: ${correctOption?.id}`)
-        console.log(`   - HASIL: ${isCorrect ? "BENAR ✅" : "SALAH ❌"}`)
-        // --------------------------------------------------
-
         if (isCorrect) correctCount++
 
-        answersData.push({
-            session_id: sessionId,
-            question_id: qId,
-            selected_option_id: selectedOptId,
-            is_correct: isCorrect
-        })
+        await supabase
+          .from('quiz_answers')
+          .update({
+             selected_option_id: selectedOptId,
+             is_correct: isCorrect,
+             status: 'answered'
+          })
+          .eq('session_id', sessionId)
+          .eq('question_id', qId)
 
         if (isCorrect) masteryUpdates.push(qId)
-    } else {
-        console.error(`Soal ID ${qId} tidak ditemukan atau tidak punya opsi!`)
     }
   }
 
-  // Hitung Skor
   const score = Math.round((correctCount / questionIds.length) * 100)
-  console.log(`SKOR AKHIR: ${score} (Benar ${correctCount} dari ${questionIds.length})`)
 
-  // Simpan Jawaban
-  await supabase.from('quiz_answers').insert(answersData)
-
-  // Update Skor
-  const { error: updateError } = await supabase
-    .from('quiz_sessions')
+  await supabase.from('quiz_sessions')
     .update({ status: 'completed', score, completed_at: new Date().toISOString() })
     .eq('id', sessionId)
 
-  if (updateError) {
-      console.error("FATAL: Gagal simpan skor ke database!", updateError)
-  } else {
-      console.log("SUKSES: Skor berhasil disimpan ke database.")
-  }
-
-  // Update Mastery (Hafalan)
   for (const qId of masteryUpdates) {
     const { data: existing } = await supabase
       .from('user_mastery')
@@ -228,287 +292,172 @@ export async function submitQuiz(sessionId: string, answers: Record<string, stri
   return { success: true, sessionId }
 }
 
-// 7. Ambil Detail Hasil Kuis (Untuk Halaman Review)
+// Result
 export async function getQuizResult(sessionId: string) {
   const supabase = await createClient()
-  
-  // A. Ambil Data Sesi + RELASI KE MATKUL (Ini yang diperbaiki)
-  const { data: session, error: sessionError } = await supabase
+  const { data: session } = await supabase
     .from('quiz_sessions')
-    .select(`
-      *,
-      quiz_title,
-      module:modules (
-        name,
-        source:sources (
-          name,
-          subject:subjects (name, code)
-        )
-      )
-    `)
-    .eq('id', sessionId)
-    .single()
+    .select(`*, quiz_title, module:modules(name, source:sources(name, subject:subjects(name, code)))`)
+    .eq('id', sessionId).single()
 
-  if (sessionError || !session) return null
-
-  // Security Check
+  if (!session) return null
   const { data: { user } } = await supabase.auth.getUser()
-  if (session.user_id !== user?.id) {
-     return null 
-  }
+  if (session.user_id !== user?.id) return null 
 
-  // B. Ambil Jawaban User + Soal + Opsi + Pembahasan
-  const { data: answers, error: answerError } = await supabase
+  const { data: answers } = await supabase
     .from('quiz_answers')
-    .select(`
-      id,
-      selected_option_id,
-      is_correct,
-      question:questions (
-        id,
-        content,
-        explanation,
-        options (
-          id,
-          text,
-          is_correct
-        )
-      )
-    `)
+    .select(`id, selected_option_id, is_correct, question:questions(id, content, explanation, options(id, text, is_correct))`)
     .eq('session_id', sessionId)
-
-  if (answerError) {
-    console.error('Error fetching reviews:', answerError)
-    return null
-  }
 
   return { session, reviews: answers }
 }
 
-// 8. Ambil Riwayat Kuis User
+// HISTORY: TAMPILKAN HANYA MATKUL YANG DI-ENROLL (VERSI FIX RELASI)
+// ============================================================================
 export async function getQuizHistory() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) return []
 
-  const { data, error } = await supabase
+  // 1. Ambil Enrollment (Daftar ID Matkul yang boleh dilihat)
+  const { data: enrollment } = await supabase
+    .from('student_subjects')
+    .select('subject_id')
+    .eq('user_id', user.id)
+  
+  const allowedSubjectIds = new Set(enrollment?.map(e => e.subject_id) || [])
+  if (allowedSubjectIds.size === 0) return []
+
+  // 2. Ambil Sesi Kuis (Raw Data)
+  const { data: sessions } = await supabase
     .from('quiz_sessions')
+    .select('id, score, status, created_at, quiz_title')
+    .eq('user_id', user.id)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+
+  if (!sessions || sessions.length === 0) return []
+
+  // 3. CARI TAHU SUBJECT DARI JAWABAN (BRIDGE)
+  // Karena sesi tidak punya kolom module_id, kita cek dari salah satu jawaban di sesi itu
+  const sessionIds = sessions.map(s => s.id)
+  
+  // Kita ambil 1 jawaban per sesi saja untuk efisiensi, yang penting dapet info subject-nya
+  const { data: answers } = await supabase
+    .from('quiz_answers')
     .select(`
-      id,
-      score,
-      status,
-      created_at,
-      quiz_title,
-      module:modules (
-        name,
-        source:sources (
+      session_id,
+      question:questions!inner (
+        module:modules!inner (
           name,
-          subject:subjects (
+          source:sources!inner (
             name,
-            code
+            subject:subjects!inner (id, name, code)
           )
         )
       )
     `)
-    .eq('user_id', user.id)
-    .eq('status', 'completed') // <--- TAMBAHAN PENTING: HANYA YANG SELESAI
-    .order('created_at', { ascending: false })
+    .in('session_id', sessionIds)
 
-  if (error) {
-    console.error('Error fetching history:', error.message)
-    return []
-  }
-
-  return data
-}
-
-// FUNGSI BARU: Ambil Soal dari BANYAK Modul + Limit Jumlah
-export async function getCustomQuizQuestions(moduleIds: string[], limit: number, mode: 'exam' | 'study') {
-  const supabase = await createClient()
-
-  let selectQuery = ''
-  if (mode === 'exam') {
-    selectQuery = 'id, content, options(id, text)'
-  } else {
-    selectQuery = 'id, content, explanation, options(id, text, is_correct)'
-  }
-
-  // Gunakan .in() untuk array moduleIds
-  const { data, error } = await supabase
-    .from('questions')
-    .select(selectQuery)
-    .in('module_id', moduleIds) 
-
-  if (error) {
-    console.error('Error fetching questions:', error.message)
-    return []
-  }
-
-  // 1. Acak Soal
-  const shuffled = data.sort(() => Math.random() - 0.5)
+  // 4. Mapping Session ID -> Info Subject
+  const sessionMap: Record<string, any> = {}
   
-  // 2. Potong sesuai Limit yang diminta user
-  return shuffled.slice(0, limit)
-}
+  answers?.forEach((ans: any) => {
+    // Kita pakai jawaban pertama yang ketemu untuk mendefinisikan subject sesi ini
+    if (!sessionMap[ans.session_id]) {
+      // Hati-hati akses nested object (Safe navigation)
+      const q = ans.question
+      const m = Array.isArray(q.module) ? q.module[0] : q.module
+      const src = Array.isArray(m?.source) ? m.source[0] : m?.source
+      const sub = Array.isArray(src?.subject) ? src.subject[0] : src?.subject
 
-// FUNGSI BARU: Ambil Soal Per Matkul (Filter Mastery < 3)
-export async function getSmartSubjectQuestions(subjectId: string, limit: number = 20) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return []
-
-  // 1. Ambil ID Soal yang SUDAH MASTER (Benar >= 3x)
-  const { data: mastered } = await supabase
-    .from('user_mastery')
-    .select('question_id')
-    .eq('user_id', user.id)
-    .gte('correct_count', 3) // Batas 3 kali benar
-
-  const masteredIds = mastered?.map(m => m.question_id) || []
-
-  // 2. Ambil Soal dari Mata Kuliah Tersebut
-  // Kita harus join: Questions -> Modules -> Sources -> Subjects
-  // Karena Supabase Query agak terbatas untuk deep filter + not in sekaligus,
-  // kita ambil soalnya dulu lalu filter di server (atau pakai RPC function kalau mau canggih, tapi ini cukup untuk MVP).
-  
-  // Ambil semua modul di matkul ini
-  const { data: modules } = await supabase
-    .from('modules')
-    .select('id, source:sources!inner(subject_id)')
-    .eq('source.subject_id', subjectId)
-  
-  const moduleIds = modules?.map(m => m.id) || []
-
-  if (moduleIds.length === 0) return []
-
-  // Ambil Soal yang TIDAK ADA di daftar Mastered
-  let query = supabase
-    .from('questions')
-    .select('id, content, options(id, text, is_correct)')
-    .in('module_id', moduleIds)
-  
-  if (masteredIds.length > 0) {
-    // Filter out mastered questions
-    // Note: Supabase JS library .not('id', 'in', ...) support array
-    query = query.not('id', 'in', `(${masteredIds.join(',')})`)
-  }
-
-  const { data: questions, error } = await query
-
-  if (error || !questions) return []
-
-  // 3. Acak & Limit
-  const shuffled = questions.sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, limit)
-}
-
-// FUNGSI BARU: Ambil Statistik Dashboard (8 Kartu)
-export async function getDashboardStats() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return []
-
-  // 1. Ambil Semua Matkul
-  const { data: subjects } = await supabase
-    .from('subjects')
-    .select('id, name, code')
-    .order('code')
-
-  if (!subjects) return []
-
-  // 2. Hitung Statistik per Matkul
-  // Ini agak berat kalau datanya jutaan, tapi untuk MVP ini oke.
-  const stats = await Promise.all(subjects.map(async (sub) => {
-    
-    // A. Cari ID Modul milik Matkul ini
-    const { data: mods } = await supabase
-      .from('modules')
-      .select('id, source:sources!inner(subject_id)')
-      .eq('source.subject_id', sub.id)
-    const modIds = mods?.map(m => m.id) || []
-
-    if (modIds.length === 0) return { ...sub, total: 0, mastered: 0, remaining: 0 }
-
-    // B. Hitung Total Soal di Matkul ini
-    const { count: totalQuestions } = await supabase
-      .from('questions')
-      .select('id', { count: 'exact', head: true })
-      .in('module_id', modIds)
-
-    // C. Hitung Soal yang sudah Master (>= 3x Benar) di Matkul ini
-    // Kita perlu join user_mastery -> questions -> modules
-    // Cara gampang: Ambil mastery user, filter question_id yang ada di modIds
-    const { data: userMastery } = await supabase
-      .from('user_mastery')
-      .select('question_id')
-      .eq('user_id', user.id)
-      .gte('correct_count', 3)
-      
-    // Filter manual: Cek apakah question_id milik userMastery ada di dalam database soal matkul ini?
-    // Agar efisien, kita balik: Ambil ID soal matkul ini, cek berapa yang ada di userMastery
-    // (Untuk MVP, kita pakai estimasi query mastery yang lebih sederhana)
-    
-    // Query Soal Master spesifik Matkul ini
-    const { count: masteredCount } = await supabase
-      .from('user_mastery')
-      .select('question_id', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .gte('correct_count', 3)
-      .in('question_id', (
-         // Subquery: Ambil semua ID soal di matkul ini
-         // (Supabase JS client limitasi di subquery raw, kita akali dengan logic JS di atas atau asumsi)
-         // OK, cara paling aman tanpa raw SQL complex:
-         // Kita sudah punya modIds. Kita query soal IDs.
-         await supabase.from('questions').select('id').in('module_id', modIds).then(res => res.data?.map(q => q.id) || [])
-      ))
-
-    const total = totalQuestions || 0
-    const master = masteredCount || 0
-    
-    return {
-      ...sub,
-      total: total,
-      mastered: master,
-      remaining: Math.max(0, total - master)
+      if (sub && sub.id) {
+        sessionMap[ans.session_id] = {
+          subjectId: sub.id,
+          subjectName: sub.name,
+          moduleName: m?.name || 'Campuran'
+        }
+      }
     }
-  }))
+  })
 
-  return stats
+  // 5. Gabungkan & Filter
+  const finalData = sessions.map(session => {
+    const info = sessionMap[session.id]
+    
+    // Jika tidak ketemu infonya (misal kuis lama yg datanya tidak lengkap), skip
+    if (!info) return null
+
+    // Struktur Data Palsu agar cocok dengan Frontend (ScoreChart)
+    return {
+      ...session,
+      module: {
+        name: info.moduleName,
+        source: {
+          subject: {
+            id: info.subjectId,
+            name: info.subjectName
+          }
+        }
+      }
+    }
+  }).filter(item => {
+    // FILTER UTAMA: Hanya loloskan jika subjectID ada di daftar enrollment user
+    return item && allowedSubjectIds.has(item.module.source.subject.id)
+  })
+
+  return finalData
 }
-// --- UPDATE FINAL: DYNAMIC MASTERY THRESHOLD ---
 
+// ============================================================================
+// STATISTIK DASHBOARD (FILTERED BY ENROLLMENT)
+// ============================================================================
 export async function getDetailedStats() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { global: null, subjects: [] }
 
-  // 1. Ambil Subjects + Threshold-nya
+  // 1. AMBIL ENROLLMENT (Hanya matkul yang boleh dilihat)
+  const { data: enrollment } = await supabase
+    .from('student_subjects')
+    .select('subject_id')
+    .eq('user_id', user.id)
+  
+  const allowedSubjectIds = enrollment?.map(e => e.subject_id) || []
+  
+  // Jika tidak ada enrollment, Dashboard KOSONG.
+  if (allowedSubjectIds.length === 0) {
+     return { 
+       global: { totalQuestions: 0, mastered: 0, progress: 0, remaining: 0 }, 
+       subjects: [] 
+     }
+  }
+
+  // 2. Ambil Subjects yang HANYA ada di allowedSubjectIds
   const { data: subjects } = await supabase
     .from('subjects')
-    .select('id, name, code, mastery_threshold') // <-- Ambil kolom baru
+    .select('id, name, code, mastery_threshold')
+    .in('id', allowedSubjectIds) // <--- INI KUNCI FILTERNYA
+
   if (!subjects) return { global: null, subjects: [] }
 
-  // 2. Ambil Semua Soal
+  // 3. Ambil Semua Soal & Mastery (Bisa dioptimasi, tapi ini cukup)
   const { data: allQuestions } = await supabase
     .from('questions')
     .select('id, module:modules!inner(source:sources!inner(subject_id))')
   
-  // 3. Ambil Mastery (HAPUS filter .gte 3, kita filter manual nanti)
   const { data: allMastery } = await supabase
     .from('user_mastery')
     .select('correct_count, question_id, question:questions!inner(module:modules!inner(source:sources!inner(subject_id)))')
     .eq('user_id', user.id)
-    // .gte('correct_count', 3) <-- INI KITA HAPUS AGAR BISA DINAMIS
 
-  // 4. Ambil Sesi (Deep Scan Logic)
   const { data: sessions } = await supabase
     .from('quiz_sessions')
     .select('id, score')
     .eq('user_id', user.id)
     .eq('status', 'completed')
 
-  // Mapping Session -> Subject (Sama seperti sebelumnya)
+  // Helper Mapping Sesi -> Subject
   const sessionIds = sessions?.map(s => s.id) || []
   let sessionSubjectMap: Record<string, string> = {}
   if (sessionIds.length > 0) {
@@ -524,32 +473,25 @@ export async function getDetailedStats() {
     })
   }
 
-  // 5. OLAH DATA FINAL (DENGAN LOGIKA BARU)
   let globalTotalQ = 0
   let globalMastered = 0
 
   const stats = subjects.map(sub => {
-    // Ambil Target Master khusus matkul ini (Default 3 jika null)
     const threshold = sub.mastery_threshold || 3
-
-    // A. Filter Soal
     const subQuestions = allQuestions?.filter((q: any) => q.module?.source?.subject_id === sub.id) || []
     
-    // B. Filter Mastery (Gunakan Threshold Dinamis)
     const subMastery = allMastery?.filter((m: any) => {
        const isBelong = m.question?.module?.source?.subject_id === sub.id
-       const isMaster = (m.correct_count || 0) >= threshold // <-- LOGIKA DINAMIS
+       const isMaster = (m.correct_count || 0) >= threshold 
        return isBelong && isMaster
     }) || []
     
-    // C. Filter Sesi
     const subSessions = sessions?.filter((s: any) => sessionSubjectMap[s.id] === sub.id) || []
     const totalQuiz = subSessions.length
     const avgScore = totalQuiz > 0 
       ? Math.round(subSessions.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / totalQuiz)
       : 0
 
-    // Akumulasi Global
     globalTotalQ += subQuestions.length
     globalMastered += subMastery.length
 
@@ -561,11 +503,10 @@ export async function getDetailedStats() {
       remaining: Math.max(0, subQuestions.length - subMastery.length),
       quizCount: totalQuiz,
       avgScore: avgScore,
-      masteryThreshold: threshold // Info tambahan buat UI kalau perlu
+      masteryThreshold: threshold
     }
   })
 
-  // 6. Global Stats
   const globalProgress = globalTotalQ > 0 ? Math.round((globalMastered / globalTotalQ) * 100) : 0
 
   return {
@@ -576,5 +517,94 @@ export async function getDetailedStats() {
       remaining: globalTotalQ - globalMastered
     },
     subjects: stats
+  }
+}
+
+// Leaderboard & Profile (Sama seperti sebelumnya)
+export async function getLeaderboard() {
+  const supabase = await createClient()
+  const { data: sessions, error } = await supabase.from('quiz_sessions').select('user_id, score').eq('status', 'completed')
+  if (error || !sessions) return []
+
+  const userStats: Record<string, { totalScore: number; count: number }> = {}
+  sessions.forEach((s) => {
+    if (!userStats[s.user_id]) userStats[s.user_id] = { totalScore: 0, count: 0 }
+    userStats[s.user_id].totalScore += (s.score || 0)
+    userStats[s.user_id].count += 1
+  })
+
+  const leaderboard = Object.keys(userStats).map((userId) => {
+    const stat = userStats[userId]
+    return {
+      userId,
+      avgScore: Math.round(stat.totalScore / stat.count),
+      totalQuiz: stat.count,
+      points: stat.totalScore 
+    }
+  })
+
+  leaderboard.sort((a, b) => b.avgScore - a.avgScore)
+  const top10 = leaderboard.slice(0, 10)
+  const userIds = top10.map(u => u.userId)
+  
+  const { data: profiles } = await supabase.from('profiles').select('id, full_name, email').in('id', userIds)
+
+  const finalData = top10.map(stat => {
+    const profile = profiles?.find(p => p.id === stat.userId)
+    return {
+      ...stat,
+      name: profile?.full_name || profile?.email?.split('@')[0] || 'Peserta',
+      email: profile?.email || ''
+    }
+  })
+
+  return finalData
+}
+
+// TIPE DATA untuk Profile
+export type ProfileState = {
+  message?: string
+  error?: string
+  success?: string
+}
+
+export async function updateProfile(prevState: any, formData: FormData): Promise<ProfileState> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const fullName = formData.get('fullName') as string
+  if (!fullName || fullName.trim().length < 3) return { error: 'Nama minimal 3 karakter.' }
+
+  const { error } = await supabase.from('profiles').update({ full_name: fullName.trim(), updated_at: new Date().toISOString() }).eq('id', user.id)
+  if (error) return { error: 'Gagal update profil.' }
+
+  revalidatePath('/profile')
+  revalidatePath('/dashboard')
+  revalidatePath('/leaderboard')
+  return { success: 'Profil berhasil diperbarui!' }
+}
+
+export async function getProfileStats() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  const { data: sessions } = await supabase.from('quiz_sessions').select('score, status').eq('user_id', user.id).eq('status', 'completed')
+
+  const totalQuiz = sessions?.length || 0
+  const totalScore = sessions?.reduce((acc, curr) => acc + (curr.score || 0), 0) || 0
+  const avgScore = totalQuiz > 0 ? Math.round(totalScore / totalQuiz) : 0
+
+  let level = "Pemula"
+  if (totalScore > 500) level = "Siswa Rajin"
+  if (totalScore > 1000) level = "Bintang Kelas"
+  if (totalScore > 2000) level = "Sepuh Kuis 👑"
+
+  return {
+    user,
+    profile,
+    stats: { totalQuiz, totalScore, avgScore, level }
   }
 }

@@ -1,206 +1,188 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { submitQuiz } from '@/app/quiz/actions'
-import { Clock, BookOpen, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { submitQuiz, saveAnswer } from '@/app/quiz/actions' // Kita akan buat saveAnswer nanti
+import { 
+  Clock, BookOpen, CheckCircle, XCircle, AlertCircle, 
+  Flag, Menu, X, ChevronLeft, ChevronRight, Save, WifiOff
+} from 'lucide-react'
 
-// --- IMPORT LIB MATEMATIKA ---
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
-// Komponen Pembantu: Render Teks biasa maupun Rumus
-const RenderText = ({ content }: { content: string }) => {
-  return (
-    // 'prose' adalah class dari Tailwind Typography untuk merapikan teks dokumen
-    <div className="prose prose-indigo max-w-none text-gray-800">
-      <ReactMarkdown
-        remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          // Custom render untuk paragraf agar spasi rapi
-          p: ({children}) => <p className="mb-2 last:mb-0 inline-block">{children}</p>
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  )
-}
-
-interface Option {
-  id: string
-  text: string
-  is_correct?: boolean 
-}
-
-interface Question {
-  id: string
-  content: string
-  explanation?: string 
-  options: Option[]
-}
+const RenderText = ({ content }: { content: string }) => (
+  <div className="prose prose-indigo max-w-none text-gray-800">
+    <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]} components={{ p: ({children}) => <p className="mb-2 last:mb-0 inline-block">{children}</p> }}>{content}</ReactMarkdown>
+  </div>
+)
 
 interface QuizInterfaceProps {
-  questions: Question[]
+  questions: any[]
   sessionId: string
   mode: 'exam' | 'study'
+  initialTime?: number       // Props baru
+  initialAnswers?: Record<string, string> // Props baru
 }
 
-export default function QuizInterface({ questions, sessionId, mode }: QuizInterfaceProps) {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
+export default function QuizInterface({ 
+  questions, 
+  sessionId, 
+  mode,
+  initialTime, 
+  initialAnswers = {} 
+}: QuizInterfaceProps) {
   
-  // Timer: 40 detik per soal
-  const [timeLeft, setTimeLeft] = useState(questions.length * 40)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers) // Load jawaban lama
+  const [marked, setMarked] = useState<Set<string>>(new Set())
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showMobileNav, setShowMobileNav] = useState(false)
+  const [isSaving, setIsSaving] = useState(false) // Indikator auto-save
+  
+  // Timer: Gunakan initialTime dari server, atau default hitung manual
+  const [timeLeft, setTimeLeft] = useState(initialTime ?? questions.length * 60)
 
   const currentQuestion = questions[currentIndex]
-  const totalQuestions = questions.length
-  
   const currentAnswerId = answers[currentQuestion.id]
-  const isAnswered = !!currentAnswerId
 
-  // Effect Timer
+  // Timer Logic
   useEffect(() => {
     if (mode === 'study') return
-    if (timeLeft <= 0) {
-      handleSubmit()
-      return
-    }
-    const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000)
+    if (timeLeft <= 0) { handleSubmit(true); return }
+    const timer = setInterval(() => setTimeLeft(p => p - 1), 1000)
     return () => clearInterval(timer)
   }, [timeLeft, mode])
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
   }
 
-  function handleSelectOption(questionId: string, optionId: string) {
-    if (mode === 'study' && answers[questionId]) return
-    setAnswers((prev) => ({ ...prev, [questionId]: optionId }))
+  // HANDLE JAWABAN + AUTO SAVE (Real-time)
+  async function handleSelectOption(questionId: string, optionId: string) {
+    if (mode === 'study' && answers[questionId]) return 
+    
+    // 1. Update UI Lokal (Cepat)
+    setAnswers(prev => ({ ...prev, [questionId]: optionId }))
+
+    // 2. Simpan ke Server (Background)
+    if (mode === 'exam') {
+      setIsSaving(true)
+      try {
+        await saveAnswer(sessionId, questionId, optionId)
+      } catch (err) {
+        console.error("Gagal auto-save:", err)
+      } finally {
+        setIsSaving(false)
+      }
+    }
   }
 
-  async function handleSubmit() {
+  function toggleMark() {
+    const newMarked = new Set(marked)
+    newMarked.has(currentQuestion.id) ? newMarked.delete(currentQuestion.id) : newMarked.add(currentQuestion.id)
+    setMarked(newMarked)
+  }
+
+  async function handleSubmit(autoSubmit = false) {
+    if (!autoSubmit && !window.confirm('Yakin ingin mengumpulkan ujian?')) return
     setIsSubmitting(true)
     try {
       await submitQuiz(sessionId, answers)
       window.location.href = `/result/${sessionId}`
     } catch (error) {
-      alert('Gagal mengumpulkan jawaban.')
+      alert('Gagal submit. Cek koneksi internet.')
       setIsSubmitting(false)
     }
   }
 
-  if (!questions || questions.length === 0) return <div className="p-8 text-center text-red-500">Soal tidak ditemukan.</div>
+  const getNavColor = (q: any, idx: number) => {
+    if (idx === currentIndex) return 'bg-indigo-600 text-white border-indigo-600'
+    if (marked.has(q.id)) return 'bg-yellow-100 text-yellow-700 border-yellow-300'
+    if (answers[q.id]) return 'bg-green-600 text-white border-green-600'
+    return 'bg-white text-gray-500 border-gray-200'
+  }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex justify-between items-center sticky top-4 z-10 border border-gray-200">
-        <div className="flex items-center space-x-2 text-gray-700">
-          <span className="font-bold text-lg">Soal {currentIndex + 1} / {totalQuestions}</span>
-          {mode === 'study' && <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold uppercase">Mode Belajar</span>}
+    <div className="max-w-5xl mx-auto px-4 py-6 md:py-8">
+      {/* HEADER */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 sticky top-4 z-20 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+           <button onClick={() => setShowMobileNav(true)} className="lg:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-lg"><Menu className="w-5 h-5" /></button>
+           <div>
+             <h1 className="font-bold text-gray-800 text-sm md:text-base">Soal {currentIndex + 1} <span className="text-gray-400 font-normal">/ {questions.length}</span></h1>
+             {/* Indikator Auto Save */}
+             {mode === 'exam' && (
+               <div className="text-[10px] flex items-center mt-1">
+                 {isSaving ? <span className="text-orange-500 animate-pulse">Menyimpan...</span> : <span className="text-gray-400">Tersimpan</span>}
+               </div>
+             )}
+           </div>
         </div>
+
         {mode === 'exam' ? (
-          <div className={`flex items-center space-x-2 font-mono text-xl font-bold ${timeLeft < 60 ? 'text-red-600 animate-pulse' : 'text-indigo-600'}`}>
+          <div className={`flex items-center gap-2 font-mono text-lg font-bold px-3 py-1 rounded-lg ${timeLeft < 300 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-gray-50 text-indigo-600'}`}>
             <Clock className="w-5 h-5" /><span>{formatTime(timeLeft)}</span>
           </div>
         ) : (
-          <div className="text-gray-500 flex items-center text-sm font-medium"><BookOpen className="w-4 h-4 mr-2" />Santai</div>
+          <div className="flex items-center text-gray-400 text-sm"><BookOpen className="w-4 h-4 mr-2" /> Santai</div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* AREA SOAL */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[300px]">
-            
-            {/* --- RENDER SOAL (Support Matematika) --- */}
-            <div className="mb-8 text-lg text-gray-900 leading-relaxed">
-              <RenderText content={currentQuestion.content} />
-            </div>
-
-            {/* Pilihan Jawaban */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[400px] flex flex-col">
+            <div className="text-base md:text-lg text-gray-900 leading-relaxed mb-8 grow"><RenderText content={currentQuestion.content} /></div>
             <div className="space-y-3">
-              {currentQuestion.options.map((option) => {
-                const isSelected = currentAnswerId === option.id
-                let containerClass = "border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer"
-                let circleClass = "border-gray-400"
-                let icon = null
-
-                if (mode === 'study' && isAnswered) {
-                  containerClass = "cursor-default" 
-                  if (option.is_correct) {
-                    containerClass = "border-green-500 bg-green-50 ring-1 ring-green-500"
-                    circleClass = "border-green-500 bg-green-500"
-                    icon = <CheckCircle className="w-5 h-5 text-green-600 ml-auto" />
-                  } else if (isSelected && !option.is_correct) {
-                    containerClass = "border-red-500 bg-red-50 ring-1 ring-red-500"
-                    circleClass = "border-red-500 bg-red-500"
-                    icon = <XCircle className="w-5 h-5 text-red-600 ml-auto" />
-                  } else { containerClass = "border-gray-100 opacity-50" }
-                } else if (isSelected) {
-                   containerClass = "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600"
-                   circleClass = "border-indigo-600 bg-indigo-600"
-                }
+              {currentQuestion.options.map((opt: any) => {
+                const isSelected = currentAnswerId === opt.id
+                let style = "border-gray-200 hover:bg-gray-50 cursor-pointer"
+                if (mode === 'study' && answers[currentQuestion.id]) {
+                   style = "cursor-default opacity-60"
+                   if (opt.is_correct) style = "border-green-500 bg-green-50 opacity-100"
+                   else if (isSelected) style = "border-red-500 bg-red-50 opacity-100"
+                } else if (isSelected) style = "border-indigo-600 bg-indigo-50"
 
                 return (
-                  <div key={option.id} onClick={() => handleSelectOption(currentQuestion.id, option.id)} className={`relative flex items-center p-4 rounded-lg border-2 transition-all ${containerClass}`}>
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center mr-4 shrink-0 ${circleClass}`}>
-                      {(isSelected || (mode === 'study' && isAnswered && option.is_correct)) && <div className="w-2 h-2 bg-white rounded-full" />}
+                  <div key={opt.id} onClick={() => handleSelectOption(currentQuestion.id, opt.id)} className={`flex items-center p-4 rounded-xl border-2 transition-all ${style}`}>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mr-4 ${isSelected ? 'border-indigo-600' : 'border-gray-300'}`}>
+                      {isSelected && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />}
                     </div>
-                    
-                    {/* --- RENDER OPSI (Support Matematika) --- */}
-                    <div className="text-gray-800 grow text-sm">
-                        <RenderText content={option.text} />
-                    </div>
-                    
-                    {icon}
+                    <div className="text-gray-700 text-sm md:text-base grow"><RenderText content={opt.text} /></div>
                   </div>
                 )
               })}
             </div>
-
-            {/* Pembahasan */}
-            {mode === 'study' && isAnswered && currentQuestion.explanation && (
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center mb-2 text-blue-800 font-bold text-xs uppercase tracking-wider">
-                  <AlertCircle className="w-4 h-4 mr-2" />Pembahasan
-                </div>
-                <div className="text-gray-700 text-sm leading-relaxed">
-                   <RenderText content={currentQuestion.explanation} />
-                </div>
-              </div>
+            {mode === 'study' && answers[currentQuestion.id] && currentQuestion.explanation && (
+               <div className="mt-8 bg-blue-50 border border-blue-100 rounded-xl p-5"><RenderText content={currentQuestion.explanation} /></div>
             )}
           </div>
 
-          {/* Navigasi */}
-          <div className="flex justify-between items-center pt-4">
-            <button onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))} disabled={currentIndex === 0 || isSubmitting} className="px-6 py-2 rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 disabled:opacity-50">Sebelumnya</button>
-            {currentIndex === totalQuestions - 1 ? (
-              <button onClick={handleSubmit} disabled={isSubmitting} className="px-8 py-2 rounded-md bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-70 flex items-center space-x-2">{isSubmitting ? 'Mengumpulkan...' : 'Selesai & Simpan'}</button>
-            ) : (
-              <button onClick={() => setCurrentIndex((prev) => Math.min(totalQuestions - 1, prev + 1))} className="px-6 py-2 rounded-md bg-indigo-600 text-white font-medium hover:opacity-90">Selanjutnya</button>
-            )}
+          {/* TOMBOL NAVIGASI */}
+          <div className="flex justify-between items-center gap-4">
+             {mode === 'exam' && <button onClick={toggleMark} className={`px-4 py-2.5 rounded-lg text-sm font-bold border ${marked.has(currentQuestion.id) ? 'bg-yellow-100 text-yellow-700 border-yellow-300' : 'bg-white text-gray-500'}`}><Flag className="w-4 h-4 mr-2 inline" />Ragu</button>}
+             <div className="flex gap-3 ml-auto">
+                <button onClick={() => setCurrentIndex(p => Math.max(0, p - 1))} disabled={currentIndex===0} className="px-5 py-2.5 rounded-lg border font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Prev</button>
+                {currentIndex === questions.length - 1 ? 
+                  <button onClick={() => handleSubmit(false)} disabled={isSubmitting} className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-md">Selesai</button> : 
+                  <button onClick={() => setCurrentIndex(p => Math.min(questions.length - 1, p + 1))} className="px-5 py-2.5 rounded-lg bg-gray-900 text-white font-bold hover:bg-gray-800">Next</button>
+                }
+             </div>
           </div>
         </div>
 
-        {/* Sidebar Navigasi */}
-        <div className="hidden lg:block">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-500 mb-4 uppercase tracking-wider">Navigasi Soal</h3>
-            <div className="grid grid-cols-4 gap-2">
-              {questions.map((q, idx) => {
-                const isAns = !!answers[q.id]
-                const isActive = idx === currentIndex
-                return (
-                  <button key={q.id} onClick={() => setCurrentIndex(idx)} className={`h-10 w-10 rounded-lg text-sm font-semibold flex items-center justify-center transition-colors ${isActive ? 'bg-indigo-600 text-white' : isAns ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{idx + 1}</button>
-                )
-              })}
-            </div>
-          </div>
+        {/* SIDEBAR NAVIGASI */}
+        <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-gray-200 p-5 h-fit sticky top-24">
+           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Peta Soal</h3>
+           <div className="grid grid-cols-5 gap-2">
+             {questions.map((q: any, i: number) => (
+               <button key={q.id} onClick={() => setCurrentIndex(i)} className={`h-9 w-9 rounded-lg text-xs font-bold border ${getNavColor(q, i)}`}>{i + 1}</button>
+             ))}
+           </div>
         </div>
       </div>
     </div>

@@ -94,7 +94,6 @@ export default async function DashboardPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {history.map((session: any) => {
-                      // Fix: Gunakan toLocaleString
                       const date = new Date(session.created_at).toLocaleString('id-ID', {
                         day: 'numeric', 
                         month: 'short', 
@@ -107,9 +106,17 @@ export default async function DashboardPage() {
                       const statusClass = isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                       const statusLabel = isCompleted ? 'Selesai' : 'Proses'
 
-                      const mod = session.module
-                      const source = mod?.source
-                      const subject = source?.subject
+                      // PERBAIKAN DI SINI:
+                      // Kita cek apakah session.module itu Array atau Object
+                      const rawModule = session.module
+                      const mod = Array.isArray(rawModule) ? rawModule[0] : rawModule
+                      
+                      // Lakukan hal yang sama untuk source dan subject jika perlu (defensive coding)
+                      const rawSource = mod?.source
+                      const source = Array.isArray(rawSource) ? rawSource[0] : rawSource
+
+                      const rawSubject = source?.subject
+                      const subject = Array.isArray(rawSubject) ? rawSubject[0] : rawSubject
 
                       return (
                         <tr key={session.id} className="hover:bg-gray-50">

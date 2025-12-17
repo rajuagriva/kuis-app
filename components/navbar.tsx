@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/server'
-import { LogOut, LayoutDashboard, ShieldCheck, BookOpen } from 'lucide-react' // Tambah icon BookOpen
+import { LogOut, LayoutDashboard, ShieldCheck, Trophy } from 'lucide-react'
 
 export default async function Navbar() {
   const supabase = await createClient()
@@ -38,22 +38,25 @@ export default async function Navbar() {
             
             <div className="hidden sm:ml-8 sm:flex sm:space-x-8">
               {isAdmin ? (
-                /* === MENU KHUSUS ADMIN (LENGKAP) === */
+                /* === MENU KHUSUS ADMIN === */
                 <>
                   <NavLink href="/admin/dashboard">Dashboard</NavLink>
-                  
-                  {/* Menu Baru Disisipkan Disini 👇 */}
-                  <NavLink href="/admin/subjects">Atur Matkul</NavLink> 
-                  
-                  {/* Menu Lama Tetap Ada 👇 */}
-                  <NavLink href="/admin/upload">Import Soal</NavLink>
-                  <NavLink href="/admin/questions">Edit Soal</NavLink>
+                  <NavLink href="/admin/subjects">Matkul</NavLink> 
+                  <NavLink href="/admin/enrollment">Akses</NavLink>
+                  <NavLink href="/admin/upload">Import</NavLink>
+                  <NavLink href="/admin/questions">Bank Soal</NavLink>
                   <NavLink href="/admin/theme">Tampilan</NavLink>
+                  <NavLink href="/leaderboard">Peringkat</NavLink>
                 </>
               ) : (
                 /* === MENU KHUSUS PESERTA === */
                 <>
                   <NavLink href="/dashboard">Dashboard</NavLink>
+                  <NavLink href="/leaderboard">
+                    <span className="flex items-center gap-1">
+                       Peringkat <Trophy className="w-4 h-4 text-yellow-500" />
+                    </span>
+                  </NavLink>
                 </>
               )}
             </div>
@@ -62,9 +65,9 @@ export default async function Navbar() {
           {/* MENU KANAN (User Info & Logout) */}
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end">
-              <span className="text-sm font-semibold text-gray-900">
+              <Link href="/profile" className="text-sm font-semibold text-gray-900 hover:text-indigo-600 transition-colors">
                 {profile?.full_name || 'Pengguna'}
-              </span>
+              </Link>
               <span className="text-xs text-gray-500 capitalize">
                 {isAdmin ? 'Administrator' : 'Peserta'}
               </span>
