@@ -17,7 +17,9 @@ export async function login(formData: FormData) {
   })
 
   if (error) {
-    return redirect('/login?message=Email atau Password salah')
+    // Tampilkan pesan error asli dari Supabase untuk debugging
+    console.error('Login error:', error.message)
+    return redirect(`/login?message=${encodeURIComponent(error.message)}`)
   }
 
   revalidatePath('/', 'layout')

@@ -29,13 +29,13 @@ export async function getSubjects() {
   // Jika tidak ada enrollment, return kosong
   if (!enrollment || enrollment.length === 0) return []
 
-  const allowedSubjectIds = enrollment.map(e => e.subject_id)
+  const allowedSubjectIds = enrollment.map((e: any) => e.subject_id)
 
   // 2. Ambil hanya subject yang ID-nya ada di daftar enrollment
   const { data, error } = await supabase
     .from('subjects')
     .select('id, name, code')
-    .in('id', allowedSubjectIds) // <--- INI KUNCI FILTERNYA
+    .in('id', allowedSubjectIds) 
     .order('name')
 
   if (error) {
@@ -84,13 +84,13 @@ export async function getUserStats() {
   if (error || !data || data.length === 0) return { totalQuiz: 0, avgScore: 0 }
 
   const totalQuiz = data.length
-  const totalScore = data.reduce((acc, curr) => acc + (curr.score || 0), 0)
+  const totalScore = data.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0)
   const avgScore = Math.round(totalScore / totalQuiz)
   return { totalQuiz, avgScore }
 }
 
 // ============================================================================
-// CORE LOGIC: CREATE SESSION & DISTRIBUSI SOAL (SECURED)
+// CORE LOGIC: CREATE SESSION & DISTRIBUSI SOAL (SECURED & FILTERED BY MASTERY)
 // ============================================================================
 export async function createQuizSession({ 
   subjectId, moduleIds, count = 10, mode = 'study' 
@@ -103,9 +103,11 @@ export async function createQuizSession({
 
   let targetModuleIds: string[] = []
   let quizTitle = "Latihan Kuis"
+  let threshold = 3 // Default threshold
 
   if (subjectId) {
     // --- KEAMANAN: Cek apakah user BOLEH ambil subject ini ---
+    // (Pengecekan ini tetap jalan meskipun user memilih modul spesifik)
     const { data: enrolled } = await supabase
         .from('student_subjects')
         .select('id')
@@ -113,43 +115,90 @@ export async function createQuizSession({
         .eq('subject_id', subjectId)
         .single()
     
-    // Jika tidak ketemu di tabel enrollment, tolak!
     if (!enrolled) throw new Error('Anda tidak memiliki akses ke mata kuliah ini.')
-    // ---------------------------------------------------------
 
-    const { data: sub } = await supabase.from('subjects').select('name').eq('id', subjectId).single()
-    if (sub) quizTitle = `Latihan: ${sub.name}`
+    const { data: sub } = await supabase.from('subjects').select('name, mastery_threshold').eq('id', subjectId).single()
+    if (sub) {
+      quizTitle = `Latihan: ${sub.name}`
+      if (sub.mastery_threshold) threshold = sub.mastery_threshold
+    }
 
-    const { data: modules } = await supabase
-      .from('modules')
-      .select('id, source:sources!inner(subject_id)')
-      .eq('source.subject_id', subjectId)
-    if (modules) targetModuleIds = modules.map(m => m.id)
+    // --- LOGIKA UTAMA (UPDATE): PRIORITAS MODUL VS SUBJECT ---
+    if (moduleIds && moduleIds.length > 0) {
+      // OPSI A: User memilih Modul Spesifik
+      // Kita gunakan modul yang dipilih user saja
+      targetModuleIds = moduleIds
+      
+      // Opsional: Tambahkan info modul ke judul kuis agar lebih jelas
+      if (moduleIds.length === 1) {
+         // Jika cuma 1 modul, coba ambil namanya buat judul (biar keren dikit)
+         const { data: mName } = await supabase.from('modules').select('name').eq('id', moduleIds[0]).single()
+         if (mName) quizTitle = `${mName.name}`
+      } else {
+         quizTitle = `${quizTitle} (Modul Terpilih)`
+      }
+
+    } else {
+      // OPSI B: User TIDAK memilih modul (Memilih Subject saja / Semua Modul)
+      // Ambil SEMUA modul di dalam subject tersebut (Fallback ke perilaku lama)
+      const { data: modules } = await supabase
+        .from('modules')
+        .select('id, source:sources!inner(subject_id)')
+        .eq('source.subject_id', subjectId)
+      if (modules) targetModuleIds = modules.map((m: any) => m.id)
+    }
   
   } else if (moduleIds && moduleIds.length > 0) {
+    // Fallback jika subjectId entah kenapa kosong tapi modul ada
     quizTitle = "Kuis Custom Modul"
     targetModuleIds = moduleIds
+    
+    // Ambil threshold dari mata pelajaran pertama jika menggunakan modul
+    const { data: firstModule } = await supabase
+      .from('modules')
+      .select('source:sources(subject:subjects(mastery_threshold))')
+      .eq('id', moduleIds[0])
+      .single()
+    
+    const potentialThreshold = (firstModule as any)?.source?.subject?.mastery_threshold
+    if (potentialThreshold) threshold = potentialThreshold
   }
 
-  if (targetModuleIds.length === 0) throw new Error('Tidak ada modul yang dipilih.')
+  if (targetModuleIds.length === 0) throw new Error('Tidak ada modul yang dipilih atau tersedia.')
 
-  // Ambil Soal
-  const { data: allQuestions } = await supabase
+  // 1. Ambil Semua Soal yang tersedia
+  const { data: allQuestionsRaw } = await supabase
     .from('questions')
     .select('id, module_id')
     .in('module_id', targetModuleIds)
   
-  if (!allQuestions || allQuestions.length === 0) throw new Error('Soal tidak ditemukan.')
+  if (!allQuestionsRaw || allQuestionsRaw.length === 0) throw new Error('Soal tidak ditemukan.')
 
-  // Distribusi Adil (Stratified)
+  // 2. Ambil Soal yang SUDAH MASTER (untuk difilter)
+  const { data: masteredRecords } = await supabase
+    .from('user_mastery')
+    .select('question_id')
+    .eq('user_id', user.id)
+    .gte('correct_count', threshold)
+
+  const masteredIds = new Set(masteredRecords?.map((m: any) => m.question_id) || [])
+
+  // 3. Filter: Hanya ambil soal yang BELUM Master
+  const availableQuestions = allQuestionsRaw.filter((q: any) => !masteredIds.has(q.id))
+
+  if (availableQuestions.length === 0) {
+    throw new Error('Hebat! Semua soal di kategori ini sudah Anda kuasai (Master).')
+  }
+
+  // Distribusi Adil (Stratified) dari soal yang belum dikuasai
   const questionsByModule: Record<string, string[]> = {}
   targetModuleIds.forEach(mid => questionsByModule[mid] = [])
-  allQuestions.forEach(q => {
+  availableQuestions.forEach((q: any) => {
     if (questionsByModule[q.module_id]) questionsByModule[q.module_id].push(q.id)
   })
 
   const activeModules = targetModuleIds.filter(mid => questionsByModule[mid].length > 0)
-  if (activeModules.length === 0) throw new Error('Modul kosong.')
+  if (activeModules.length === 0) throw new Error('Modul kosong atau semua soal sudah dikuasai.')
 
   let finalSelectedIds: string[] = []
   let remainingQuota = count
@@ -245,10 +294,10 @@ export async function submitQuiz(sessionId: string, answers: Record<string, stri
 
   for (const qId of questionIds) {
     const selectedOptId = answers[qId]
-    const question = questions.find(q => q.id === qId)
+    const question = questions.find((q: any) => q.id === qId)
     
     if (question && question.options) {
-        const correctOption = question.options.find(o => o.is_correct)
+        const correctOption = question.options.find((o: any) => o.is_correct)
         const isCorrect = correctOption?.id === selectedOptId
         if (isCorrect) correctCount++
 
@@ -312,23 +361,21 @@ export async function getQuizResult(sessionId: string) {
   return { session, reviews: answers }
 }
 
-// HISTORY: TAMPILKAN HANYA MATKUL YANG DI-ENROLL (VERSI FIX RELASI)
+// HISTORY: TAMPILKAN HANYA MATKUL YANG DI-ENROLL
 // ============================================================================
 export async function getQuizHistory() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  // 1. Ambil Enrollment (Daftar ID Matkul yang boleh dilihat)
   const { data: enrollment } = await supabase
     .from('student_subjects')
     .select('subject_id')
     .eq('user_id', user.id)
   
-  const allowedSubjectIds = new Set(enrollment?.map(e => e.subject_id) || [])
+  const allowedSubjectIds = new Set(enrollment?.map((e: any) => e.subject_id) || [])
   if (allowedSubjectIds.size === 0) return []
 
-  // 2. Ambil Sesi Kuis (Raw Data)
   const { data: sessions } = await supabase
     .from('quiz_sessions')
     .select('id, score, status, created_at, quiz_title')
@@ -338,11 +385,7 @@ export async function getQuizHistory() {
 
   if (!sessions || sessions.length === 0) return []
 
-  // 3. CARI TAHU SUBJECT DARI JAWABAN (BRIDGE)
-  // Karena sesi tidak punya kolom module_id, kita cek dari salah satu jawaban di sesi itu
   const sessionIds = sessions.map(s => s.id)
-  
-  // Kita ambil 1 jawaban per sesi saja untuk efisiensi, yang penting dapet info subject-nya
   const { data: answers } = await supabase
     .from('quiz_answers')
     .select(`
@@ -359,13 +402,9 @@ export async function getQuizHistory() {
     `)
     .in('session_id', sessionIds)
 
-  // 4. Mapping Session ID -> Info Subject
   const sessionMap: Record<string, any> = {}
-  
   answers?.forEach((ans: any) => {
-    // Kita pakai jawaban pertama yang ketemu untuk mendefinisikan subject sesi ini
     if (!sessionMap[ans.session_id]) {
-      // Hati-hati akses nested object (Safe navigation)
       const q = ans.question
       const m = Array.isArray(q.module) ? q.module[0] : q.module
       const src = Array.isArray(m?.source) ? m.source[0] : m?.source
@@ -381,14 +420,9 @@ export async function getQuizHistory() {
     }
   })
 
-  // 5. Gabungkan & Filter
-  const finalData = sessions.map(session => {
+  return sessions.map((session: any) => {
     const info = sessionMap[session.id]
-    
-    // Jika tidak ketemu infonya (misal kuis lama yg datanya tidak lengkap), skip
     if (!info) return null
-
-    // Struktur Data Palsu agar cocok dengan Frontend (ScoreChart)
     return {
       ...session,
       module: {
@@ -401,12 +435,7 @@ export async function getQuizHistory() {
         }
       }
     }
-  }).filter(item => {
-    // FILTER UTAMA: Hanya loloskan jika subjectID ada di daftar enrollment user
-    return item && allowedSubjectIds.has(item.module.source.subject.id)
-  })
-
-  return finalData
+  }).filter((item: any) => item && allowedSubjectIds.has(item.module.source.subject.id))
 }
 
 // ============================================================================
@@ -417,15 +446,12 @@ export async function getDetailedStats() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { global: null, subjects: [] }
 
-  // 1. AMBIL ENROLLMENT (Hanya matkul yang boleh dilihat)
   const { data: enrollment } = await supabase
     .from('student_subjects')
     .select('subject_id')
     .eq('user_id', user.id)
   
-  const allowedSubjectIds = enrollment?.map(e => e.subject_id) || []
-  
-  // Jika tidak ada enrollment, Dashboard KOSONG.
+  const allowedSubjectIds = enrollment?.map((e: any) => e.subject_id) || []
   if (allowedSubjectIds.length === 0) {
      return { 
        global: { totalQuestions: 0, mastered: 0, progress: 0, remaining: 0 }, 
@@ -433,15 +459,13 @@ export async function getDetailedStats() {
      }
   }
 
-  // 2. Ambil Subjects yang HANYA ada di allowedSubjectIds
   const { data: subjects } = await supabase
     .from('subjects')
     .select('id, name, code, mastery_threshold')
-    .in('id', allowedSubjectIds) // <--- INI KUNCI FILTERNYA
+    .in('id', allowedSubjectIds)
 
   if (!subjects) return { global: null, subjects: [] }
 
-  // 3. Ambil Semua Soal & Mastery (Bisa dioptimasi, tapi ini cukup)
   const { data: allQuestions } = await supabase
     .from('questions')
     .select('id, module:modules!inner(source:sources!inner(subject_id))')
@@ -457,7 +481,6 @@ export async function getDetailedStats() {
     .eq('user_id', user.id)
     .eq('status', 'completed')
 
-  // Helper Mapping Sesi -> Subject
   const sessionIds = sessions?.map(s => s.id) || []
   let sessionSubjectMap: Record<string, string> = {}
   if (sessionIds.length > 0) {
@@ -476,7 +499,7 @@ export async function getDetailedStats() {
   let globalTotalQ = 0
   let globalMastered = 0
 
-  const stats = subjects.map(sub => {
+  const stats = subjects.map((sub: any) => {
     const threshold = sub.mastery_threshold || 3
     const subQuestions = allQuestions?.filter((q: any) => q.module?.source?.subject_id === sub.id) || []
     
@@ -507,27 +530,25 @@ export async function getDetailedStats() {
     }
   })
 
-  const globalProgress = globalTotalQ > 0 ? Math.round((globalMastered / globalTotalQ) * 100) : 0
-
   return {
     global: {
       totalQuestions: globalTotalQ,
       mastered: globalMastered,
-      progress: globalProgress,
+      progress: globalTotalQ > 0 ? Math.round((globalMastered / globalTotalQ) * 100) : 0,
       remaining: globalTotalQ - globalMastered
     },
     subjects: stats
   }
 }
 
-// Leaderboard & Profile (Sama seperti sebelumnya)
+// Leaderboard 
 export async function getLeaderboard() {
   const supabase = await createClient()
   const { data: sessions, error } = await supabase.from('quiz_sessions').select('user_id, score').eq('status', 'completed')
   if (error || !sessions) return []
 
   const userStats: Record<string, { totalScore: number; count: number }> = {}
-  sessions.forEach((s) => {
+  sessions.forEach((s: any) => {
     if (!userStats[s.user_id]) userStats[s.user_id] = { totalScore: 0, count: 0 }
     userStats[s.user_id].totalScore += (s.score || 0)
     userStats[s.user_id].count += 1
@@ -549,24 +570,18 @@ export async function getLeaderboard() {
   
   const { data: profiles } = await supabase.from('profiles').select('id, full_name, email').in('id', userIds)
 
-  const finalData = top10.map(stat => {
-    const profile = profiles?.find(p => p.id === stat.userId)
+  return top10.map(stat => {
+    const profile = profiles?.find((p: any) => p.id === stat.userId)
     return {
       ...stat,
       name: profile?.full_name || profile?.email?.split('@')[0] || 'Peserta',
       email: profile?.email || ''
     }
   })
-
-  return finalData
 }
 
-// TIPE DATA untuk Profile
-export type ProfileState = {
-  message?: string
-  error?: string
-  success?: string
-}
+// Profile 
+export type ProfileState = { message?: string; error?: string; success?: string }
 
 export async function updateProfile(prevState: any, formData: FormData): Promise<ProfileState> {
   const supabase = await createClient()
@@ -594,7 +609,7 @@ export async function getProfileStats() {
   const { data: sessions } = await supabase.from('quiz_sessions').select('score, status').eq('user_id', user.id).eq('status', 'completed')
 
   const totalQuiz = sessions?.length || 0
-  const totalScore = sessions?.reduce((acc, curr) => acc + (curr.score || 0), 0) || 0
+  const totalScore = sessions?.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) || 0
   const avgScore = totalQuiz > 0 ? Math.round(totalScore / totalQuiz) : 0
 
   let level = "Pemula"
@@ -602,9 +617,5 @@ export async function getProfileStats() {
   if (totalScore > 1000) level = "Bintang Kelas"
   if (totalScore > 2000) level = "Sepuh Kuis 👑"
 
-  return {
-    user,
-    profile,
-    stats: { totalQuiz, totalScore, avgScore, level }
-  }
+  return { user, profile, stats: { totalQuiz, totalScore, avgScore, level } }
 }
