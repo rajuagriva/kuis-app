@@ -12,7 +12,7 @@ export async function askAIExplanation(questionText: string, options: any[], cor
   const messages = [
     {
       role: "system",
-      content: "Kamu adalah Guru Privat IT yang ramah. Jelaskan dalam Bahasa Indonesia. Gunakan format Markdown (Bold/Code). Penjelasan maksimal 3 kalimat saja biar singkat."
+      content: "Kamu adalah Guru Privat IT yang ramah. Jelaskan dalam Bahasa Indonesia. Gunakan format Markdown (Bold/Code). Penjelasan maksimal 6 kalimat saja biar singkat."
     },
     {
       role: "user",

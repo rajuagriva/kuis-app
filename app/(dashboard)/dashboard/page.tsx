@@ -68,7 +68,7 @@ export default async function DashboardPage() {
                 className="h-full rounded-full transition-all duration-1000 shadow-sm relative overflow-hidden" 
                 style={{ width: `${global?.progress}%`, backgroundColor: 'var(--primary)' }}
               >
-                 <div className="absolute top-0 left-0 w-full h-full bg-white opacity-20 bg-gradient-to-b from-white to-transparent"></div>
+                 <div className="absolute top-0 left-0 w-full h-full bg-white opacity-20 gradient-to-b from-white to-transparent"></div>
               </div>
             </div>
           </div>
@@ -121,8 +121,8 @@ export default async function DashboardPage() {
             }
 
             return (
-              <div key={sub.id} className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col hover:border-[color:var(--primary)]" style={{ borderColor: 'transparent' }} suppressHydrationWarning>
-                <div className="p-5 flex-grow flex flex-col">
+              <div key={sub.id} className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col hover:border-(--primary)]" style={{ borderColor: 'transparent' }} suppressHydrationWarning>
+                <div className="p-5 grow flex flex-col">
                   {/* Header Nama Matkul */}
                   <div className="flex justify-between items-start mb-3">
                       <span 
@@ -134,7 +134,7 @@ export default async function DashboardPage() {
                       {isCompleted && <CheckCircle className="w-5 h-5 text-green-500" />}
                   </div>
                   
-                  <h3 className="font-bold text-gray-900 mb-4 line-clamp-2 min-h-[3rem] text-sm leading-relaxed group-hover:text-[color:var(--primary)] transition-colors">
+                  <h3 className="font-bold text-gray-900 mb-4 line-clamp-2 [3rem] text-sm leading-relaxed group-hover:text-(--primary)] transition-colors">
                       {sub.name}
                   </h3>
 
@@ -179,7 +179,7 @@ export default async function DashboardPage() {
                       className="flex items-center justify-center w-full py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:text-white transition-all shadow-sm group-hover:shadow-md"
                       style={{ '--hover-bg': 'var(--primary)' } as React.CSSProperties}
                     >
-                      <span className="flex items-center group-hover:text-[color:var(--primary)]">
+                      <span className="flex items-center group-hover:text-(--primary)]">
                          {/* Ganti icon Play jadi BookOpen biar kesan belajar */}
                          <BookOpen className="w-3.5 h-3.5 mr-2" /> 
                          Mulai Belajar
