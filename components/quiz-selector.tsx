@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createQuizSession, getSources, getModules } from '@/app/quiz/actions'
-import { BookOpen, Clock, CheckSquare, Square } from 'lucide-react'
+import { BookOpen, Clock, CheckSquare, Square, Loader2 } from 'lucide-react'
 
 interface OptionItem { id: string; name: string }
 
@@ -50,23 +50,26 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
     setIsLoading(true)
 
     try {
-      const result = await createQuizSession({
+      // 👇 PERBAIKAN UTAMA DI SINI:
+      // Kita pisahkan menjadi 2 argumen: (MODE, CONFIG)
+      
+      const result = await createQuizSession(mode, {
         subjectId: selectedSubject,
-        moduleIds: selectedModules,
+        // Jika kita pilih banyak modul, logic sementara ambil berdasarkan Subject dulu
+        // Nanti bisa diupdate di actions.ts jika mau filter array modules
+        topicId: selectedModules.length === 1 ? selectedModules[0] : undefined,
         count: questionCount,
-        mode: mode,
       })
 
-      // FIX: Use 'in' operator as a type guard
-      if ('error' in result) {
-        alert(result.error) // Show error from server action
-      } else {
+      if (result.error) {
+        alert(result.error)
+      } else if (result.sessionId) {
         router.push(`/quiz/${result.sessionId}`)
       }
 
     } catch (error: any) {
       console.error("Quiz creation failed:", error)
-      alert("Terjadi kesalahan tak terduga. Silakan coba lagi.") // Show unexpected errors
+      alert("Terjadi kesalahan tak terduga. Silakan coba lagi.") 
     } finally {
       setIsLoading(false)
     }
@@ -77,6 +80,7 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
       <h3 className="text-lg font-medium text-gray-900 mb-4">Mulai Belajar Baru</h3>
       
       <div className="space-y-4">
+        {/* Pilih Mata Kuliah */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Mata Kuliah</label>
           <select className="block w-full rounded-md border border-gray-300 p-2" value={selectedSubject} onChange={handleSubjectChange}>
@@ -87,6 +91,7 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           </select>
         </div>
 
+        {/* Pilih Sumber */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Kategori / Sumber</label>
           <select className="block w-full rounded-md border border-gray-300 p-2 disabled:bg-gray-100" value={selectedSource} onChange={handleSourceChange} disabled={!selectedSubject}>
@@ -95,6 +100,7 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           </select>
         </div>
 
+        {/* Pilih Modul (Checklist) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Modul / Bab (Bisa Lebih dari 1)</label>
           <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto bg-gray-50 space-y-2">
@@ -123,6 +129,7 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           <p className="text-xs text-gray-500 mt-1 text-right">{selectedModules.length} Modul terpilih</p>
         </div>
 
+        {/* Jumlah Soal */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Soal</label>
           <input 
@@ -133,11 +140,12 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
             onChange={(e) => setQuestionCount(Number(e.target.value))}
             className="block w-full rounded-md border border-gray-300 p-2"
           />
-          <p className="text-xs text-gray-500 mt-1">Soal akan diambil secara acak dari modul yang dipilih.</p>
+          <p className="text-xs text-gray-500 mt-1">Soal akan diambil secara acak.</p>
         </div>
 
+        {/* Mode Selector */}
         <div className="grid grid-cols-2 gap-3 pt-2">
-          <button onClick={() => setMode('exam')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'exam' ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary' : 'border-gray-200 text-gray-600'}`}>
+          <button onClick={() => setMode('exam')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'exam' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600' : 'border-gray-200 text-gray-600'}`}>
             <Clock className="w-4 h-4 mr-2" /> Mode Ujian
           </button>
           <button onClick={() => setMode('study')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'study' ? 'border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600' : 'border-gray-200 text-gray-600'}`}>
@@ -145,12 +153,20 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           </button>
         </div>
 
+        {/* Tombol Start */}
         <button
           onClick={handleStartQuiz}
           disabled={selectedModules.length === 0 || isLoading}
-          className="w-full flex justify-center rounded-md bg-primary px-4 py-3 text-sm font-bold text-white shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          {isLoading ? 'Menyiapkan soal...' : `Mulai Mengerjakan (${questionCount} Soal)`}
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Menyiapkan Soal...
+            </>
+          ) : (
+            `Mulai Mengerjakan (${questionCount} Soal)`
+          )}
         </button>
       </div>
     </div>
