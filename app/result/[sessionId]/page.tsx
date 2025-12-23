@@ -190,7 +190,7 @@ export default async function ResultPage({ params }: { params: Promise<{ session
                  )}
 
                  {/* Tombol Tanya AI */}
-                  <AskAIButton 
+                  <AskAIButton
                     questionContent={question.content}
                     options={question.options}
                     correctAnswerText={correctOption?.text || ''}

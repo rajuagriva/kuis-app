@@ -1,51 +1,60 @@
 'use server'
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
-// Inisialisasi Client Google AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '')
-
 export async function askAIExplanation(questionText: string, options: any[], correctAnswerText: string) {
+  const apiKey = process.env.GROQ_API_KEY
+  
+  if (!apiKey) {
+    return { error: 'Server Error: GROQ_API_KEY belum disetting.' }
+  }
+
+  const optionsText = options.map((o: any) => `- ${o.text}`).join('\n')
+  
+  const messages = [
+    {
+      role: "system",
+      content: "Kamu adalah Guru Privat IT yang ramah. Jelaskan dalam Bahasa Indonesia. Gunakan format Markdown (Bold/Code). Penjelasan maksimal 3 kalimat saja biar singkat."
+    },
+    {
+      role: "user",
+      content: `SOAL: "${questionText}"\n\nPILIHAN:\n${optionsText}\n\nJAWABAN BENAR: "${correctAnswerText}"\n\nJelaskan kenapa jawaban itu benar dan kenapa yang lain salah.`
+    }
+  ]
+
   try {
-    // 1. Validasi Input
-    if (!questionText || !correctAnswerText) {
-      return { error: 'Data soal tidak lengkap.' }
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        // 👇 PERUBAHAN: Menggunakan Model Terbaru (Llama 3.3)
+        // Model ini sangat cerdas, cepat, dan GRATIS.
+        model: "llama-3.3-70b-versatile", 
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 300
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error("🔥 Groq Error:", errorData)
+      return { error: `Gagal: ${errorData.error?.message || 'Terjadi kesalahan'}` }
     }
 
-    // 2. Pilih Model (gemini-1.5-flash lebih cepat & hemat, gemini-pro lebih pintar)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const data = await response.json()
+    const explanation = data.choices[0]?.message?.content
 
-    // 3. Susun Prompt
-    const optionsText = options.map((o: any) => `- ${o.text}`).join('\n')
-
-    const prompt = `
-      Bertindaklah sebagai Guru Privat/Dosen IT yang ramah dan pintar.
-      
-      SOAL:
-      "${questionText}"
-
-      PILIHAN JAWABAN:
-      ${optionsText}
-
-      JAWABAN YANG BENAR:
-      "${correctAnswerText}"
-
-      TUGAS:
-      1. Jelaskan secara singkat dan padat (maksimal 2 kalimat) MENGAPA jawaban tersebut benar.
-      2. Jelaskan juga kenapa pilihan lain salah (jika relevan).
-      3. Jika soal berupa kodingan (C++, Java, Python, dll), jelaskan logika baris per barisnya atau konsep Big-Oh nya.
-      4. Gunakan format Markdown (bold, code block) agar enak dibaca.
-    `
-
-    // 4. Kirim ke Google Gemini
-    const result = await model.generateContent(prompt)
-    const response = await result.response
-    const explanation = response.text()
+    if (!explanation) return { error: 'AI diam saja.' }
 
     return { success: true, explanation }
 
-  } catch (error) {
-    console.error('Google AI Error:', error)
-    return { error: 'Maaf, AI sedang istirahat. Coba lagi nanti.' }
+  } catch (error: any) {
+    console.error('🔥 Fetch Error:', error)
+    return { error: 'Gagal menghubungi server Groq.' }
   }
 }
+
+// Fungsi sisa dihapus
+export async function checkAvailableModels() {}

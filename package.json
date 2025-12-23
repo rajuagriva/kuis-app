@@ -9,10 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.87.0",
     "clsx": "^2.1.1",
+    "highlight.js": "^11.11.1",
     "katex": "^0.16.27",
     "lucide-react": "^0.556.0",
     "next": "16.0.8",
@@ -20,6 +20,7 @@
     "react-dom": "19.2.1",
     "react-markdown": "^10.1.0",
     "recharts": "^3.5.1",
+    "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "zustand": "^5.0.9"
