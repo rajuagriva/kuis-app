@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getSources, getModules } from '@/app/quiz/actions'
+import { createQuizSession, getSources, getModules } from '@/app/quiz/actions'
 import { BookOpen, Clock, CheckSquare, Square } from 'lucide-react'
 
-// ... interfaces Subject, OptionItem tetap sama ...
 interface OptionItem { id: string; name: string }
 
 export default function QuizSelector({ initialSubjects }: { initialSubjects: any[] }) {
@@ -13,11 +12,10 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
   
   const [selectedSubject, setSelectedSubject] = useState('')
   const [selectedSource, setSelectedSource] = useState('')
-  
-  // Ganti selectedModule string -> array
   const [selectedModules, setSelectedModules] = useState<string[]>([]) 
-  const [questionCount, setQuestionCount] = useState(10) // Default 10 soal
+  const [questionCount, setQuestionCount] = useState(10)
   const [mode, setMode] = useState<'exam' | 'study'>('exam')
+  const [isLoading, setIsLoading] = useState(false)
 
   const [sources, setSources] = useState<OptionItem[]>([])
   const [modules, setModules] = useState<OptionItem[]>([])
@@ -25,7 +23,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
   const [loadingSources, setLoadingSources] = useState(false)
   const [loadingModules, setLoadingModules] = useState(false)
 
-  // ... handleSubjectChange tetap sama ...
   async function handleSubjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const subjectId = e.target.value; setSelectedSubject(subjectId); setSelectedSource(''); setSelectedModules([]); setModules([])
     if (subjectId) {
@@ -33,7 +30,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
     } else { setSources([]) }
   }
 
-  // ... handleSourceChange updated ...
   async function handleSourceChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const sourceId = e.target.value; setSelectedSource(sourceId); setSelectedModules([])
     if (sourceId) {
@@ -41,7 +37,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
     } else { setModules([]) }
   }
 
-  // Logic Toggle Checkbox Modul
   function toggleModule(moduleId: string) {
     setSelectedModules(prev => 
       prev.includes(moduleId) 
@@ -50,11 +45,30 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
     )
   }
 
-  function handleStartQuiz() {
-    if (selectedModules.length > 0) {
-      // Redirect ke Halaman Custom Start dengan Query Params
-      const moduleStr = selectedModules.join(',')
-      router.push(`/quiz/start-custom?modules=${moduleStr}&count=${questionCount}&mode=${mode}`)
+  async function handleStartQuiz() {
+    if (selectedModules.length === 0) return
+    setIsLoading(true)
+
+    try {
+      const result = await createQuizSession({
+        subjectId: selectedSubject,
+        moduleIds: selectedModules,
+        count: questionCount,
+        mode: mode,
+      })
+
+      // FIX: Use 'in' operator as a type guard
+      if ('error' in result) {
+        alert(result.error) // Show error from server action
+      } else {
+        router.push(`/quiz/${result.sessionId}`)
+      }
+
+    } catch (error: any) {
+      console.error("Quiz creation failed:", error)
+      alert("Terjadi kesalahan tak terduga. Silakan coba lagi.") // Show unexpected errors
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -63,7 +77,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
       <h3 className="text-lg font-medium text-gray-900 mb-4">Mulai Belajar Baru</h3>
       
       <div className="space-y-4">
-        {/* Dropdown Mata Kuliah */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Mata Kuliah</label>
           <select className="block w-full rounded-md border border-gray-300 p-2" value={selectedSubject} onChange={handleSubjectChange}>
@@ -74,7 +87,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           </select>
         </div>
 
-        {/* Dropdown Sumber */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Kategori / Sumber</label>
           <select className="block w-full rounded-md border border-gray-300 p-2 disabled:bg-gray-100" value={selectedSource} onChange={handleSourceChange} disabled={!selectedSubject}>
@@ -83,7 +95,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           </select>
         </div>
 
-        {/* CHECKBOX LIST MODUL (Fitur Baru) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Modul / Bab (Bisa Lebih dari 1)</label>
           <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto bg-gray-50 space-y-2">
@@ -112,7 +123,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           <p className="text-xs text-gray-500 mt-1 text-right">{selectedModules.length} Modul terpilih</p>
         </div>
 
-        {/* INPUT JUMLAH SOAL (Fitur Baru) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Soal</label>
           <input 
@@ -126,7 +136,6 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
           <p className="text-xs text-gray-500 mt-1">Soal akan diambil secara acak dari modul yang dipilih.</p>
         </div>
 
-        {/* PILIH MODE */}
         <div className="grid grid-cols-2 gap-3 pt-2">
           <button onClick={() => setMode('exam')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'exam' ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary' : 'border-gray-200 text-gray-600'}`}>
             <Clock className="w-4 h-4 mr-2" /> Mode Ujian
@@ -138,10 +147,10 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
 
         <button
           onClick={handleStartQuiz}
-          disabled={selectedModules.length === 0}
+          disabled={selectedModules.length === 0 || isLoading}
           className="w-full flex justify-center rounded-md bg-primary px-4 py-3 text-sm font-bold text-white shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Mulai Mengerjakan ({questionCount} Soal)
+          {isLoading ? 'Menyiapkan soal...' : `Mulai Mengerjakan (${questionCount} Soal)`}
         </button>
       </div>
     </div>

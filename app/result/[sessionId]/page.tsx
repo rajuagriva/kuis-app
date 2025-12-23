@@ -12,6 +12,7 @@ import {
   BarChart3
 } from 'lucide-react'
 import { redirect } from 'next/navigation'
+import AskAIButton from '@/components/ask-ai-button'
 
 // --- LIB MATEMATIKA (Untuk Render Pembahasan) ---
 import ReactMarkdown from 'react-markdown'
@@ -187,6 +188,14 @@ export default async function ResultPage({ params }: { params: Promise<{ session
                       </div>
                    </div>
                  )}
+
+                 {/* Tombol Tanya AI */}
+                  <AskAIButton 
+                    questionContent={question.content}
+                    options={question.options}
+                    correctAnswerText={correctOption?.text || ''}
+                  />
+
                </div>
              )
            })}

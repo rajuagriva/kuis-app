@@ -96,18 +96,16 @@ export async function createQuizSession({
   subjectId, moduleIds, count = 10, mode = 'study' 
 }: { 
   subjectId?: string, moduleIds?: string[], count?: number, mode?: 'study' | 'exam' 
-}) {
+}): Promise<{ sessionId: string } | { error: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Unauthorized')
+  if (!user) return { error: 'Unauthorized' }
 
   let targetModuleIds: string[] = []
   let quizTitle = "Latihan Kuis"
   let threshold = 3 // Default threshold
 
   if (subjectId) {
-    // --- KEAMANAN: Cek apakah user BOLEH ambil subject ini ---
-    // (Pengecekan ini tetap jalan meskipun user memilih modul spesifik)
     const { data: enrolled } = await supabase
         .from('student_subjects')
         .select('id')
@@ -115,7 +113,7 @@ export async function createQuizSession({
         .eq('subject_id', subjectId)
         .single()
     
-    if (!enrolled) throw new Error('Anda tidak memiliki akses ke mata kuliah ini.')
+    if (!enrolled) return { error: 'Anda tidak memiliki akses ke mata kuliah ini.' }
 
     const { data: sub } = await supabase.from('subjects').select('name, mastery_threshold').eq('id', subjectId).single()
     if (sub) {
@@ -123,15 +121,9 @@ export async function createQuizSession({
       if (sub.mastery_threshold) threshold = sub.mastery_threshold
     }
 
-    // --- LOGIKA UTAMA (UPDATE): PRIORITAS MODUL VS SUBJECT ---
     if (moduleIds && moduleIds.length > 0) {
-      // OPSI A: User memilih Modul Spesifik
-      // Kita gunakan modul yang dipilih user saja
       targetModuleIds = moduleIds
-      
-      // Opsional: Tambahkan info modul ke judul kuis agar lebih jelas
       if (moduleIds.length === 1) {
-         // Jika cuma 1 modul, coba ambil namanya buat judul (biar keren dikit)
          const { data: mName } = await supabase.from('modules').select('name').eq('id', moduleIds[0]).single()
          if (mName) quizTitle = `${mName.name}`
       } else {
@@ -139,8 +131,6 @@ export async function createQuizSession({
       }
 
     } else {
-      // OPSI B: User TIDAK memilih modul (Memilih Subject saja / Semua Modul)
-      // Ambil SEMUA modul di dalam subject tersebut (Fallback ke perilaku lama)
       const { data: modules } = await supabase
         .from('modules')
         .select('id, source:sources!inner(subject_id)')
@@ -149,11 +139,9 @@ export async function createQuizSession({
     }
   
   } else if (moduleIds && moduleIds.length > 0) {
-    // Fallback jika subjectId entah kenapa kosong tapi modul ada
     quizTitle = "Kuis Custom Modul"
     targetModuleIds = moduleIds
     
-    // Ambil threshold dari mata pelajaran pertama jika menggunakan modul
     const { data: firstModule } = await supabase
       .from('modules')
       .select('source:sources(subject:subjects(mastery_threshold))')
@@ -164,17 +152,15 @@ export async function createQuizSession({
     if (potentialThreshold) threshold = potentialThreshold
   }
 
-  if (targetModuleIds.length === 0) throw new Error('Tidak ada modul yang dipilih atau tersedia.')
+  if (targetModuleIds.length === 0) return { error: 'Tidak ada modul yang dipilih atau tersedia.' }
 
-  // 1. Ambil Semua Soal yang tersedia
   const { data: allQuestionsRaw } = await supabase
     .from('questions')
     .select('id, module_id')
     .in('module_id', targetModuleIds)
   
-  if (!allQuestionsRaw || allQuestionsRaw.length === 0) throw new Error('Soal tidak ditemukan.')
+  if (!allQuestionsRaw || allQuestionsRaw.length === 0) return { error: 'Soal tidak ditemukan untuk modul yang dipilih.' }
 
-  // 2. Ambil Soal yang SUDAH MASTER (untuk difilter)
   const { data: masteredRecords } = await supabase
     .from('user_mastery')
     .select('question_id')
@@ -183,14 +169,12 @@ export async function createQuizSession({
 
   const masteredIds = new Set(masteredRecords?.map((m: any) => m.question_id) || [])
 
-  // 3. Filter: Hanya ambil soal yang BELUM Master
   const availableQuestions = allQuestionsRaw.filter((q: any) => !masteredIds.has(q.id))
 
   if (availableQuestions.length === 0) {
-    throw new Error('Hebat! Semua soal di kategori ini sudah Anda kuasai (Master).')
+    return { error: 'Hebat! Semua soal di kategori ini sudah Anda kuasai (Master).' }
   }
 
-  // Distribusi Adil (Stratified) dari soal yang belum dikuasai
   const questionsByModule: Record<string, string[]> = {}
   targetModuleIds.forEach(mid => questionsByModule[mid] = [])
   availableQuestions.forEach((q: any) => {
@@ -198,7 +182,7 @@ export async function createQuizSession({
   })
 
   const activeModules = targetModuleIds.filter(mid => questionsByModule[mid].length > 0)
-  if (activeModules.length === 0) throw new Error('Modul kosong atau semua soal sudah dikuasai.')
+  if (activeModules.length === 0) return { error: 'Modul kosong atau semua soal sudah dikuasai.' }
 
   let finalSelectedIds: string[] = []
   let remainingQuota = count
@@ -223,7 +207,6 @@ export async function createQuizSession({
     }
   }
 
-  // Buat Sesi
   const { data: session, error: sessionError } = await supabase
     .from('quiz_sessions')
     .insert({
@@ -236,9 +219,11 @@ export async function createQuizSession({
     })
     .select().single()
 
-  if (sessionError) throw new Error(sessionError.message)
+  if (sessionError) {
+    console.error('Session Creation Error:', sessionError.message)
+    return { error: `Gagal membuat sesi kuis: ${sessionError.message}` }
+  }
 
-  // Insert Jawaban Kosong
   const finalShuffled = shuffleArray(finalSelectedIds)
   const answerInserts = finalShuffled.map((qid, index) => ({
     session_id: session.id,
@@ -248,7 +233,10 @@ export async function createQuizSession({
   }))
 
   const { error: ansError } = await supabase.from('quiz_answers').insert(answerInserts)
-  if (ansError) throw new Error(ansError.message)
+  if (ansError) {
+    console.error('Answer Insertion Error:', ansError.message)
+    return { error: `Gagal menyiapkan soal: ${ansError.message}` }
+  }
 
   return { sessionId: session.id }
 }
