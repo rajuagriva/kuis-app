@@ -2,7 +2,6 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache'
-import { redirect } from 'next/navigation'
 
 // --- HELPER: AC & DISTRIBUSI SOAL (STRATIFIED SAMPLING) ---
 function shuffleArray<T>(array: T[]): T[] {
@@ -35,7 +34,7 @@ export async function getSubjects() {
   // 2. Ambil hanya subject yang ID-nya ada di daftar enrollment
   const { data, error } = await supabase
     .from('subjects')
-    .select('id, name, code')
+    .select('id, name, code, mastery_threshold')
     .in('id', allowedSubjectIds) 
     .order('name')
 
@@ -153,8 +152,6 @@ export async function createQuizSession(
   console.log(`✅ Ditemukan ${questionsData.length} soal potensial.`)
 
   // 5. Acak Soal & Batasi Jumlah (Limit)
-  // Kita pakai helper shuffleArray (pastikan fungsi ini ada di file Anda)
-  // Kalau tidak ada, pakai logic simple: .sort(() => 0.5 - Math.random())
   const shuffled = questionsData.sort(() => 0.5 - Math.random())
   const selectedQuestions = shuffled.slice(0, config.count)
   
@@ -181,7 +178,6 @@ export async function createQuizSession(
   }
 
   // 7. Simpan Daftar Soal ke Tabel `quiz_answers` (sebagai placeholder)
-  // Ini penting agar urutan soal tersimpan
   const answerInserts = questionIds.map((qId, index) => ({
     session_id: session.id,
     question_id: qId,
@@ -200,7 +196,7 @@ export async function createQuizSession(
 
   console.log("🎉 Quiz Session Berhasil Dibuat:", session.id)
 
-  // 8. Return ID Session (Jangan redirect di server action jika dipanggil via Client Component)
+  // 8. Return ID Session
   return { success: true, sessionId: session.id }
 }
 
@@ -390,122 +386,79 @@ export async function getQuizHistory() {
 }
 
 // ============================================================================
-// STATISTIK DASHBOARD (FILTERED BY ENROLLMENT)
+// STATISTIK DASHBOARD (FULL FIX: Range + Left Join + NoStore)
 // ============================================================================
 export async function getDetailedStats() {
-  // 1. Matikan Cache (Agar data selalu update saat soal ditambah)
-  noStore() 
+  noStore() // Tetap matikan cache
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { global: null, subjects: [] }
 
-  // 2. Ambil Mata Kuliah yang diambil siswa
-  const { data: enrollment } = await supabase
-    .from('student_subjects')
-    .select('subject_id')
-    .eq('user_id', user.id)
-  
-  const allowedSubjectIds = enrollment?.map((e: any) => e.subject_id) || []
+  // 1. PANGGIL FUNGSI SQL YANG TADI KITA BUAT
+  // Supabase langsung mengembalikan hasil hitungan matang.
+  const { data: statsData, error } = await supabase
+    .rpc('get_student_stats', { target_user_id: user.id })
 
-  // Jika belum ambil matkul, return 0 semua
-  if (allowedSubjectIds.length === 0) {
-     return { 
-       global: { totalQuestions: 0, mastered: 0, progress: 0, remaining: 0 }, 
-       subjects: [] 
-     }
+  if (error) {
+    console.error("🔥 RPC Error:", error)
+    return { global: null, subjects: [] }
   }
 
-  // 3. Ambil Data Subjects
-  const { data: subjects } = await supabase
-    .from('subjects')
-    .select('id, name, code, mastery_threshold')
-    .in('id', allowedSubjectIds)
+  if (!statsData) return { global: null, subjects: [] }
 
-  if (!subjects) return { global: null, subjects: [] }
-
-  // 4. Ambil SEMUA Soal (Untuk hitung total)
-  const { data: allQuestions } = await supabase
-    .from('questions')
-    .select('id, module:modules!inner(source:sources!inner(subject_id))')
-  
-  // 5. Ambil Mastery User (Soal yang sudah dikuasai)
-  const { data: allMastery } = await supabase
-    .from('user_mastery')
-    .select('correct_count, question_id, question:questions!inner(module:modules!inner(source:sources!inner(subject_id)))')
-    .eq('user_id', user.id)
-
-  // 6. Ambil Sesi Kuis Selesai (Untuk hitung rata-rata nilai)
+  // 2. Ambil Data Sesi Kuis (Untuk hitung rata-rata nilai & total kuis)
+  // Ini tetap kita fetch manual karena logic-nya beda tabel
   const { data: sessions } = await supabase
     .from('quiz_sessions')
-    .select('id, score')
+    .select('score, status, quiz_answers!inner(question:questions!inner(module:modules!inner(source:sources!inner(subject_id))))')
     .eq('user_id', user.id)
     .eq('status', 'completed')
 
-  // -- Helper: Petakan Session ID ke Subject ID --
-  // Supaya kita tahu "Sesi Kuis X" itu milik "Matkul Apa"
-  const sessionIds = sessions?.map(s => s.id) || []
-  let sessionSubjectMap: Record<string, string> = {}
+  // Helper untuk hitung rata-rata per subject
+  const sessionStats: Record<string, { totalScore: number, count: number }> = {}
   
-  if (sessionIds.length > 0) {
-    // Kita cek isi jawaban kuis untuk tahu matkulnya
-    const { data: answers } = await supabase
-      .from('quiz_answers')
-      .select(`session_id, question:questions!inner(module:modules!inner(source:sources!inner(subject_id)))`)
-      .in('session_id', sessionIds)
+  sessions?.forEach((s: any) => {
+    // Ambil subject_id dari soal pertama di kuis itu (sebagai penanda matkul)
+    // (Asumsi 1 kuis = 1 matkul, atau mayoritas)
+    const subjectId = s.quiz_answers?.[0]?.question?.module?.source?.subject_id
     
-    // Mapping session_id -> subject_id
-    answers?.forEach((ans: any) => {
-      if (ans.session_id && ans.question?.module?.source?.subject_id) {
-        sessionSubjectMap[ans.session_id] = ans.question.module.source.subject_id
-      }
-    })
-  }
-
-  // 7. MULAI PERHITUNGAN (Ini bagian yang tadi hilang/error)
-  let globalTotalQ = 0
-  let globalMastered = 0
-
-  // Kita loop setiap mata kuliah untuk hitung statistik per matkul
-  const stats = subjects.map((sub: any) => {
-    const threshold = sub.mastery_threshold || 3 // Default mastery butuh 3x benar
-    
-    // Filter soal milik matkul ini
-    const subQuestions = allQuestions?.filter((q: any) => q.module?.source?.subject_id === sub.id) || []
-    
-    // Filter mastery milik matkul ini
-    const subMastery = allMastery?.filter((m: any) => {
-       const isBelong = m.question?.module?.source?.subject_id === sub.id
-       const isMaster = (m.correct_count || 0) >= threshold 
-       return isBelong && isMaster
-    }) || []
-    
-    // Filter sesi kuis milik matkul ini
-    const subSessions = sessions?.filter((s: any) => sessionSubjectMap[s.id] === sub.id) || []
-    
-    // Hitung rata-rata nilai
-    const totalQuiz = subSessions.length
-    const avgScore = totalQuiz > 0 
-      ? Math.round(subSessions.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / totalQuiz)
-      : 0
-
-    // Akumulasi ke Global Stats
-    globalTotalQ += subQuestions.length
-    globalMastered += subMastery.length
-
-    return {
-      ...sub,
-      totalQuestions: subQuestions.length,
-      masteredQuestions: subMastery.length,
-      progress: subQuestions.length > 0 ? Math.round((subMastery.length / subQuestions.length) * 100) : 0,
-      remaining: Math.max(0, subQuestions.length - subMastery.length),
-      quizCount: totalQuiz,
-      avgScore: avgScore,
-      masteryThreshold: threshold
+    if (subjectId) {
+      if (!sessionStats[subjectId]) sessionStats[subjectId] = { totalScore: 0, count: 0 }
+      sessionStats[subjectId].totalScore += (s.score || 0)
+      sessionStats[subjectId].count += 1
     }
   })
 
-  // 8. Return Hasil Akhir
+  // 3. Gabungkan Data RPC + Data Session
+  let globalTotalQ = 0
+  let globalMastered = 0
+
+  const finalStats = statsData.map((sub: any) => {
+    const sStat = sessionStats[sub.subject_id] || { totalScore: 0, count: 0 }
+    const avgScore = sStat.count > 0 ? Math.round(sStat.totalScore / sStat.count) : 0
+    
+    // Konversi BigInt ke Number (Supabase kadang balikin string buat angka gede)
+    const totalQ = Number(sub.total_questions)
+    const masteredQ = Number(sub.mastered_questions)
+
+    globalTotalQ += totalQ
+    globalMastered += masteredQ
+
+    return {
+      id: sub.subject_id,
+      name: sub.subject_name,
+      code: sub.subject_code,
+      totalQuestions: totalQ,
+      masteredQuestions: masteredQ,
+      progress: totalQ > 0 ? Math.round((masteredQ / totalQ) * 100) : 0,
+      remaining: Math.max(0, totalQ - masteredQ),
+      quizCount: sStat.count,
+      avgScore: avgScore,
+      masteryThreshold: sub.mastery_threshold
+    }
+  })
+
   return {
     global: {
       totalQuestions: globalTotalQ,
@@ -513,7 +466,7 @@ export async function getDetailedStats() {
       progress: globalTotalQ > 0 ? Math.round((globalMastered / globalTotalQ) * 100) : 0,
       remaining: globalTotalQ - globalMastered
     },
-    subjects: stats // Variabel stats sudah didefinisikan di poin no 7
+    subjects: finalStats
   }
 }
 
