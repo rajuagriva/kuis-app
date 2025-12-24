@@ -31,7 +31,7 @@ export default async function Navbar() {
                    {isAdmin ? <ShieldCheck className="w-6 h-6 text-white" /> : <LayoutDashboard className="w-6 h-6 text-white" />}
                 </div>
                 <span className="text-xl font-bold text-gray-900 hidden md:block">
-                  {isAdmin ? 'Admin Panel' : 'Kuis App'}
+                  {isAdmin ? 'Admin' : 'Ujian Test'}
                 </span>
               </Link>
             </div>
@@ -57,6 +57,7 @@ export default async function Navbar() {
                        Peringkat <Trophy className="w-4 h-4 text-yellow-500" />
                     </span>
                   </NavLink>
+                  <NavLink href="/analytics">Analisis</NavLink>
                 </>
               )}
             </div>

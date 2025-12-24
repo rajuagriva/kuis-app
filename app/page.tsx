@@ -21,7 +21,7 @@ export default async function LandingPage() {
           <div className="bg-indigo-600 p-2 rounded-lg" suppressHydrationWarning>
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <span className="text-xl font-bold text-gray-900">Kuis App</span>
+          <span className="text-xl font-bold text-gray-900">Lets Ujian</span>
         </div>
         <div className="space-x-4" suppressHydrationWarning>
           <Link 
@@ -130,7 +130,7 @@ export default async function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center" suppressHydrationWarning>
           <div className="flex items-center gap-2 mb-4 md:mb-0" suppressHydrationWarning>
             <BookOpen className="w-5 h-5 text-indigo-600" />
-            <span className="font-bold text-gray-900">Kuis App</span>
+            <span className="font-bold text-gray-900">Lets Ujian</span>
           </div>
           <p className="text-gray-500 text-sm" suppressHydrationWarning>
             &copy; {new Date().getFullYear()} Aplikasi Ujian Online. All rights reserved.

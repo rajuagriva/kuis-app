@@ -53,14 +53,11 @@ export default function QuizSelector({ initialSubjects }: { initialSubjects: any
       // 👇 PERBAIKAN UTAMA DI SINI:
       // Kita pisahkan menjadi 2 argumen: (MODE, CONFIG)
       
-      const result = await createQuizSession(mode, {
-        subjectId: selectedSubject,
-        // Jika kita pilih banyak modul, logic sementara ambil berdasarkan Subject dulu
-        // Nanti bisa diupdate di actions.ts jika mau filter array modules
-        topicId: selectedModules.length === 1 ? selectedModules[0] : undefined,
-        count: questionCount,
-      })
-
+const result = await createQuizSession(mode, {
+  subjectId: selectedSubject,
+  moduleIds: selectedModules, // 👈 Pastikan kirim array ini!
+  count: questionCount,
+})
       if (result.error) {
         alert(result.error)
       } else if (result.sessionId) {

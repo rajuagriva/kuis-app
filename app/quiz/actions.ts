@@ -96,7 +96,8 @@ export async function createQuizSession(
   mode: 'practice' | 'exam' | 'study',
   config: { 
     subjectId?: string; 
-    topicId?: string; // module_id
+    topicId?: string;    // Untuk single module
+    moduleIds?: string[]; // 👈 TAMBAHAN PENTING: Untuk support banyak modul
     count: number 
   }
 ) {
@@ -107,49 +108,24 @@ export async function createQuizSession(
   if (!user) return { error: 'Unauthorized' }
 
   // ---------------------------------------------------------
-  // 1. CARI TAHU SUBJECT ID & AMBIL THRESHOLD DARI DATABASE
+  // 1. SETTING THRESHOLD (FORCE 1)
   // ---------------------------------------------------------
-  let subjectId = config.subjectId;
-  let masteryThreshold = 1; // Default (jaga-jaga jika admin lupa isi)
+  // Kita paksa 1 agar logika "Sudah dijawab benar" valid (sekali benar langsung hilang)
+  const MASTERY_THRESHOLD = 1;
 
-  // Jika inputnya hanya topicId (Modul), kita cari Subject induknya dulu
-  if (!subjectId && config.topicId) {
-    const { data: mod } = await supabase
-      .from('modules')
-      .select('source:sources(subject_id)')
-      .eq('id', config.topicId)
-      .single()
-    
-    if (mod?.source) {
-       // @ts-ignore (Supabase typing kadang nested array/object)
-       subjectId = Array.isArray(mod.source) ? mod.source[0].subject_id : mod.source.subject_id
-    }
-  }
-
-  // Ambil nilai threshold spesifik mapel ini
-  if (subjectId) {
-    const { data: sub } = await supabase
-      .from('subjects')
-      .select('mastery_threshold')
-      .eq('id', subjectId)
-      .single()
-    
-    if (sub && sub.mastery_threshold) {
-      masteryThreshold = sub.mastery_threshold
-    }
-  }
-
-  console.log(`🎯 Logic Info: SubjectID=${subjectId}, Threshold Butuh ${masteryThreshold}x Benar`)
+  console.log("🚀 Create Session:", { mode, modules: config.moduleIds, count: config.count })
 
   // ---------------------------------------------------------
-  // 2. QUERY SOAL (Kandidat)
+  // 2. QUERY SOAL (SUPPORT MULTI MODULE)
   // ---------------------------------------------------------
   let query = supabase
     .from('questions')
     .select(`
       id,
+      module_id, 
       module:modules!inner (
         id,
+        name,
         source:sources!inner (
           id,
           subject_id
@@ -157,67 +133,76 @@ export async function createQuizSession(
       )
     `)
 
-  if (config.subjectId) query = query.eq('module.source.subject_id', config.subjectId)
-  if (config.topicId) query = query.eq('module_id', config.topicId)
+  // Filter A: Jika User memilih spesifik 1 Modul
+  if (config.topicId) {
+    query = query.eq('module_id', config.topicId)
+  }
+  
+  // Filter B: Jika User memilih BANYAK Modul (Ini perbaikan utamanya)
+  // Kita gunakan .in() untuk memfilter array ID
+  else if (config.moduleIds && config.moduleIds.length > 0) {
+    query = query.in('module_id', config.moduleIds)
+  }
+
+  // Filter C: Jika tidak pilih modul, ambil per Mata Kuliah (Fallback)
+  else if (config.subjectId) {
+    query = query.eq('module.source.subject_id', config.subjectId)
+  }
 
   const { data: allQuestions } = await query
 
   if (!allQuestions || allQuestions.length === 0) {
-    return { error: 'Belum ada soal tersedia.' }
+    return { error: 'Tidak ada soal ditemukan untuk modul yang dipilih.' }
   }
 
   // ---------------------------------------------------------
-  // 3. FILTER LOGIC: BUANG YANG SUDAH MASTER
+  // 3. FILTER LOGIC: CEK APAKAH SUDAH MASTER?
   // ---------------------------------------------------------
   
-  // Ambil riwayat mastery user untuk soal-soal ini
   const questionIdsToCheck = allQuestions.map(q => q.id)
+  
   const { data: masteryData } = await supabase
     .from('user_mastery')
     .select('question_id, correct_count')
     .eq('user_id', user.id)
     .in('question_id', questionIdsToCheck)
 
-  // Buat daftar ID soal yang sudah "Lulus KKM" (Correct Count >= Threshold Database)
+  // Buat daftar ID soal yang sudah pernah benar MINIMAL 1 KALI
   const masteredIds = new Set(
     masteryData
-      ?.filter(m => (m.correct_count || 0) >= masteryThreshold)
+      ?.filter(m => (m.correct_count || 0) >= MASTERY_THRESHOLD)
       .map(m => m.question_id) || []
   )
 
-  // Filter: Hanya ambil yang BELUM Master
+  // FILTER UTAMA: Hanya ambil yang BELUM ada di daftar masteredIds
+  // Logika ini berlaku untuk SEMUA MODE (Exam/Study) sesuai permintaan Anda
   let finalPool = allQuestions.filter(q => !masteredIds.has(q.id))
 
+  console.log(`📊 Statistik: Total Soal Modul=${allQuestions.length}, Sudah Benar=${masteredIds.size}, Sisa=${finalPool.length}`)
+
   // ---------------------------------------------------------
-  // 4. HANDLING JIKA SOAL HABIS / SEDIKIT
+  // 4. HANDLING JIKA SUDAH BENAR SEMUA
   // ---------------------------------------------------------
-  
-  // Kasus: User sudah menamatkan semua soal di modul ini
   if (finalPool.length === 0) {
-     return { error: `Luar biasa! Anda sudah menguasai semua soal di materi ini (Benar ${masteryThreshold}x).` }
+     return { error: `Anda sudah menjawab BENAR semua soal di modul-modul ini!` }
   }
 
-  // Kasus: Sisa soal tinggal sedikit (misal 3), tapi user minta 10
-  // Logic: Ambil semua sisanya (3 soal).
-  
-  // Acak urutan
+  // ---------------------------------------------------------
+  // 5. ACAK & LIMIT
+  // ---------------------------------------------------------
   const shuffled = finalPool.sort(() => 0.5 - Math.random())
-  
-  // Potong sesuai jumlah permintaan (atau seadanya jika kurang)
   const selectedQuestions = shuffled.slice(0, config.count)
   const questionIds = selectedQuestions.map(q => q.id)
 
-  console.log(`📊 Distribusi Soal: Total=${allQuestions.length}, Sudah Master=${masteredIds.size}, Sisa=${finalPool.length}, Diambil=${questionIds.length}`)
-
   // ---------------------------------------------------------
-  // 5. INSERT KE DATABASE (SESSION & ANSWERS)
+  // 6. SIMPAN KE DATABASE
   // ---------------------------------------------------------
   const { data: session, error: sessionError } = await supabase
     .from('quiz_sessions')
     .insert({
       user_id: user.id,
       mode: mode,
-      total_questions: questionIds.length, // Simpan jumlah aktual (bisa < 10)
+      total_questions: questionIds.length,
       current_question_index: 0,
       score: 0,
       status: 'in_progress',
