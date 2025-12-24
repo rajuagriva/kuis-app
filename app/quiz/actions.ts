@@ -100,18 +100,50 @@ export async function createQuizSession(
     count: number 
   }
 ) {
-  // 1. Matikan Cache agar selalu ambil soal terbaru
   noStore()
-
-  console.log("🚀 Memulai createQuizSession...", { mode, config })
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { error: 'Unauthorized' }
 
-  // 2. Query Soal dengan Relasi Bertingkat (Chain)
-  // Kita ambil ID soal dulu
+  // ---------------------------------------------------------
+  // 1. CARI TAHU SUBJECT ID & AMBIL THRESHOLD DARI DATABASE
+  // ---------------------------------------------------------
+  let subjectId = config.subjectId;
+  let masteryThreshold = 1; // Default (jaga-jaga jika admin lupa isi)
+
+  // Jika inputnya hanya topicId (Modul), kita cari Subject induknya dulu
+  if (!subjectId && config.topicId) {
+    const { data: mod } = await supabase
+      .from('modules')
+      .select('source:sources(subject_id)')
+      .eq('id', config.topicId)
+      .single()
+    
+    if (mod?.source) {
+       // @ts-ignore (Supabase typing kadang nested array/object)
+       subjectId = Array.isArray(mod.source) ? mod.source[0].subject_id : mod.source.subject_id
+    }
+  }
+
+  // Ambil nilai threshold spesifik mapel ini
+  if (subjectId) {
+    const { data: sub } = await supabase
+      .from('subjects')
+      .select('mastery_threshold')
+      .eq('id', subjectId)
+      .single()
+    
+    if (sub && sub.mastery_threshold) {
+      masteryThreshold = sub.mastery_threshold
+    }
+  }
+
+  console.log(`🎯 Logic Info: SubjectID=${subjectId}, Threshold Butuh ${masteryThreshold}x Benar`)
+
+  // ---------------------------------------------------------
+  // 2. QUERY SOAL (Kandidat)
+  // ---------------------------------------------------------
   let query = supabase
     .from('questions')
     .select(`
@@ -125,59 +157,77 @@ export async function createQuizSession(
       )
     `)
 
-  // 3. Filter Berdasarkan Subject ID (Jika ada di URL)
-  if (config.subjectId) {
-    // Filter soal yang punya module -> source -> subject_id sesuai request
-    query = query.eq('module.source.subject_id', config.subjectId)
+  if (config.subjectId) query = query.eq('module.source.subject_id', config.subjectId)
+  if (config.topicId) query = query.eq('module_id', config.topicId)
+
+  const { data: allQuestions } = await query
+
+  if (!allQuestions || allQuestions.length === 0) {
+    return { error: 'Belum ada soal tersedia.' }
   }
 
-  // 4. Filter Berdasarkan Topic/Module ID (Jika ada)
-  if (config.topicId) {
-    query = query.eq('module_id', config.topicId)
-  }
-
-  const { data: questionsData, error: questionsError } = await query
-
-  if (questionsError) {
-    console.error("🔥 Error Fetch Soal:", questionsError)
-    return { error: 'Gagal mengambil data soal dari database.' }
-  }
-
-  // Cek apakah soal ditemukan
-  if (!questionsData || questionsData.length === 0) {
-    console.warn("⚠️ Soal Kosong! Pastikan Subject ID benar dan Soal sudah diinput.")
-    return { error: 'Belum ada soal tersedia untuk mata kuliah ini.' }
-  }
-
-  console.log(`✅ Ditemukan ${questionsData.length} soal potensial.`)
-
-  // 5. Acak Soal & Batasi Jumlah (Limit)
-  const shuffled = questionsData.sort(() => 0.5 - Math.random())
-  const selectedQuestions = shuffled.slice(0, config.count)
+  // ---------------------------------------------------------
+  // 3. FILTER LOGIC: BUANG YANG SUDAH MASTER
+  // ---------------------------------------------------------
   
+  // Ambil riwayat mastery user untuk soal-soal ini
+  const questionIdsToCheck = allQuestions.map(q => q.id)
+  const { data: masteryData } = await supabase
+    .from('user_mastery')
+    .select('question_id, correct_count')
+    .eq('user_id', user.id)
+    .in('question_id', questionIdsToCheck)
+
+  // Buat daftar ID soal yang sudah "Lulus KKM" (Correct Count >= Threshold Database)
+  const masteredIds = new Set(
+    masteryData
+      ?.filter(m => (m.correct_count || 0) >= masteryThreshold)
+      .map(m => m.question_id) || []
+  )
+
+  // Filter: Hanya ambil yang BELUM Master
+  let finalPool = allQuestions.filter(q => !masteredIds.has(q.id))
+
+  // ---------------------------------------------------------
+  // 4. HANDLING JIKA SOAL HABIS / SEDIKIT
+  // ---------------------------------------------------------
+  
+  // Kasus: User sudah menamatkan semua soal di modul ini
+  if (finalPool.length === 0) {
+     return { error: `Luar biasa! Anda sudah menguasai semua soal di materi ini (Benar ${masteryThreshold}x).` }
+  }
+
+  // Kasus: Sisa soal tinggal sedikit (misal 3), tapi user minta 10
+  // Logic: Ambil semua sisanya (3 soal).
+  
+  // Acak urutan
+  const shuffled = finalPool.sort(() => 0.5 - Math.random())
+  
+  // Potong sesuai jumlah permintaan (atau seadanya jika kurang)
+  const selectedQuestions = shuffled.slice(0, config.count)
   const questionIds = selectedQuestions.map(q => q.id)
 
-  // 6. Buat Session Baru
+  console.log(`📊 Distribusi Soal: Total=${allQuestions.length}, Sudah Master=${masteredIds.size}, Sisa=${finalPool.length}, Diambil=${questionIds.length}`)
+
+  // ---------------------------------------------------------
+  // 5. INSERT KE DATABASE (SESSION & ANSWERS)
+  // ---------------------------------------------------------
   const { data: session, error: sessionError } = await supabase
     .from('quiz_sessions')
     .insert({
       user_id: user.id,
       mode: mode,
-      total_questions: questionIds.length,
+      total_questions: questionIds.length, // Simpan jumlah aktual (bisa < 10)
       current_question_index: 0,
       score: 0,
       status: 'in_progress',
-      settings: config // Simpan config buat history
+      settings: config 
     })
     .select()
     .single()
 
-  if (sessionError || !session) {
-    console.error("🔥 Error Create Session:", sessionError)
-    return { error: 'Gagal membuat sesi kuis baru.' }
-  }
+  if (sessionError || !session) return { error: 'Gagal membuat sesi.' }
 
-  // 7. Simpan Daftar Soal ke Tabel `quiz_answers` (sebagai placeholder)
   const answerInserts = questionIds.map((qId, index) => ({
     session_id: session.id,
     question_id: qId,
@@ -189,14 +239,8 @@ export async function createQuizSession(
     .from('quiz_answers')
     .insert(answerInserts)
 
-  if (answersError) {
-    console.error("🔥 Error Insert Answers:", answersError)
-    return { error: 'Gagal menyiapkan lembar jawaban.' }
-  }
+  if (answersError) return { error: 'Gagal menyiapkan lembar jawaban.' }
 
-  console.log("🎉 Quiz Session Berhasil Dibuat:", session.id)
-
-  // 8. Return ID Session
   return { success: true, sessionId: session.id }
 }
 

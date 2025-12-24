@@ -100,7 +100,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
              </span>
              <span className="text-gray-400 font-medium mb-1">Poin</span>
           </div>
-          <p className="text-gray-700 font-medium mt-2 max-w-[180px] leading-tight">
+          <p className="text-gray-700 font-medium mt-2 max-w-45 leading-tight">
             {title}
           </p>
           {dataPoint.score >= 70 ? (
@@ -124,7 +124,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[300px] text-gray-400 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-200">
+      <div className="flex flex-col items-center justify-center h-75 text-gray-400 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-200">
         <BarChart3 className="w-10 h-10 mb-2 opacity-20" />
         <p className="text-sm font-medium">Belum ada data grafik.</p>
       </div>
@@ -197,7 +197,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       </div>
 
       {/* 2. CHART AREA */}
-      <div className="w-full h-[300px] min-w-0">
+      <div className="w-full h-75 min-w-0">
         {filteredData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={filteredData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
