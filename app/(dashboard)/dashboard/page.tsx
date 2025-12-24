@@ -231,7 +231,7 @@ export default async function DashboardPage() {
                             {session.quiz_title || session.module?.source?.subject?.name || 'Kuis Custom'}
                          </div>
                          <div className="text-xs text-gray-400 mt-0.5">
-                           {new Date(session.created_at).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', hour:'2-digit', minute:'2-digit'})}
+                           {new Date(session.created_at).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', hour:'2-digit', minute:'2-digit', hour12: false, timeZone: 'Asia/Jakarta'})}
                          </div>
                       </td>
                       <td className="px-6 py-4 text-center">

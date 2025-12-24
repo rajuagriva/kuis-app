@@ -70,43 +70,56 @@ export default function ScoreChart({ data }: { data: any[] }) {
   }, [filteredData])
 
   // --- UI Helpers ---
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const dataPoint = payload[0].payload
-      const title = dataPoint.quiz_title || 
-                    dataPoint.module?.source?.subject?.name || 
-                    dataPoint.module?.name || 
-                    'Latihan'
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      // 👇 1. TAMBAHKAN LOGIC FORMAT TANGGAL DI SINI (Convert ke WIB)
+      const formattedDate = new Date(label).toLocaleString('id-ID', {
+        day: 'numeric',
+        month: 'short', // 24 Des
+        year: 'numeric', // 2025
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false, // 24 jam
+        timeZone: 'Asia/Jakarta' // Paksa Zona Waktu Jakarta
+      }) + ' WIB'
 
-      return (
-        <div className="bg-white p-3 border border-gray-200 shadow-xl rounded-xl text-xs z-50">
-          <p className="font-bold text-gray-500 mb-1">{label}</p>
-          <div className="flex items-end gap-2">
-             <span className="text-2xl font-black text-indigo-600">
-               {payload[0].value}
-             </span>
-             <span className="text-gray-400 font-medium mb-1">Poin</span>
-          </div>
-          <p className="text-gray-700 font-medium mt-2 max-w-[180px] leading-tight">
-            {title}
-          </p>
-          {dataPoint.score >= 70 ? (
-             <span className="inline-block mt-2 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">LULUS</span>
-          ) : (
-             <span className="inline-block mt-2 text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">GAGAL</span>
-          )}
-        </div>
-      )
-    }
-    return null
-  }
+      const dataPoint = payload[0].payload
+      const title = dataPoint.quiz_title || 
+                    dataPoint.module?.source?.subject?.name || 
+                    dataPoint.module?.name || 
+                    'Latihan'
+
+      return (
+        <div className="bg-white p-3 border border-gray-200 shadow-xl rounded-xl text-xs z-50">
+          {/* 👇 2. GANTI {label} MENJADI {formattedDate} */}
+          <p className="font-bold text-gray-500 mb-1">{formattedDate}</p>
+          
+          <div className="flex items-end gap-2">
+             <span className="text-2xl font-black text-indigo-600">
+               {payload[0].value}
+             </span>
+             <span className="text-gray-400 font-medium mb-1">Poin</span>
+          </div>
+          <p className="text-gray-700 font-medium mt-2 max-w-[180px] leading-tight">
+            {title}
+          </p>
+          {dataPoint.score >= 70 ? (
+             <span className="inline-block mt-2 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">LULUS</span>
+          ) : (
+             <span className="inline-block mt-2 text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">GAGAL</span>
+          )}
+        </div>
+      )
+    }
+    return null
+  }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     if (range === 'today') {
-       return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+       return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' , hour12: false, timeZone: 'Asia/Jakarta'})
     }
-    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' , timeZone: 'Asia/Jakarta'})
   }
 
   if (!data || data.length === 0) {
