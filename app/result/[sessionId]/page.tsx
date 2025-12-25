@@ -7,12 +7,12 @@ import {
   AlertCircle, 
   Trophy, 
   ArrowLeft, 
-  RotateCcw, 
   Calendar,
   BarChart3
 } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import AskAIButton from '@/components/ask-ai-button'
+import ScrollToTopButton from '@/components/scroll-to-top' // 👈 Import komponen baru
 
 // --- LIB MATEMATIKA (Untuk Render Pembahasan) ---
 import ReactMarkdown from 'react-markdown'
@@ -52,14 +52,19 @@ export default async function ResultPage({ params }: { params: Promise<{ session
   const correctCount = reviews?.filter(r => r.is_correct).length || 0
   const wrongCount = totalQuestions - correctCount
 
-  // Format Tanggal
+  // Format Tanggal (Update: Paksa Waktu Indonesia)
   const dateStr = new Date(session.created_at).toLocaleDateString('id-ID', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
-    hour: '2-digit', minute: '2-digit'
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta' // 👈 Menjamin waktu WIB/Indonesia
   })
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 py-10 px-4 relative">
       <div className="max-w-3xl mx-auto space-y-8">
         
         {/* KARTU UTAMA: SKOR & STATUS */}
@@ -70,7 +75,7 @@ export default async function ResultPage({ params }: { params: Promise<{ session
           <div className="p-8 pb-6">
             <h1 className="text-xl font-bold text-gray-700 mb-1">{session.quiz_title}</h1>
             <p className="text-xs text-gray-400 flex items-center justify-center gap-1 mb-6">
-               <Calendar className="w-3 h-3" /> {dateStr}
+               <Calendar className="w-3 h-3" /> {dateStr} WIB
             </p>
 
             <div className="flex justify-center items-center mb-6">
@@ -108,14 +113,10 @@ export default async function ResultPage({ params }: { params: Promise<{ session
           </div>
         </div>
 
-        {/* TOMBOL AKSI */}
+        {/* TOMBOL AKSI (Update: Tombol Ulangi Dihapus) */}
         <div className="flex gap-4">
            <Link href="/dashboard" className="flex-1 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl shadow-sm hover:bg-gray-50 flex items-center justify-center transition-all">
              <ArrowLeft className="w-4 h-4 mr-2" /> Kembali ke Dashboard
-           </Link>
-           {/* Tombol Ulangi (Hanya jika latihan matkul, jika custom mungkin perlu logic lain) */}
-           <Link href="/dashboard" className="flex-1 bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg flex items-center justify-center transition-all">
-             <RotateCcw className="w-4 h-4 mr-2" /> Ulangi Ujian Baru
            </Link>
         </div>
 
@@ -158,7 +159,7 @@ export default async function ResultPage({ params }: { params: Promise<{ session
                        <div>
                          <span className="text-xs font-bold uppercase opacity-70 block mb-1">Jawaban Anda:</span>
                          <span className={isCorrect ? 'text-green-800 font-medium' : 'text-red-800 font-medium'}>
-                            {userOption ? <RenderText content={userOption.text} /> : '(Tidak Dijawab)'}
+                           {userOption ? <RenderText content={userOption.text} /> : '(Tidak Dijawab)'}
                          </span>
                        </div>
                     </div>
@@ -190,11 +191,11 @@ export default async function ResultPage({ params }: { params: Promise<{ session
                  )}
 
                  {/* Tombol Tanya AI */}
-                  <AskAIButton
-                    questionContent={question.content}
-                    options={question.options}
-                    correctAnswerText={correctOption?.text || ''}
-                  />
+                 <AskAIButton
+                   questionContent={question.content}
+                   options={question.options}
+                   correctAnswerText={correctOption?.text || ''}
+                 />
 
                </div>
              )
@@ -202,6 +203,9 @@ export default async function ResultPage({ params }: { params: Promise<{ session
         </div>
 
       </div>
+      
+      {/* 4. Tombol Scroll ke Atas (Mengambang) */}
+      <ScrollToTopButton />
     </div>
   )
 }
