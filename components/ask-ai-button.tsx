@@ -97,7 +97,7 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Penjelasan AI Tutor</h3>
-              <p className="text-xs text-slate-500 font-medium">Powered by Llama 3 (Groq)</p>
+              <p className="text-xs text-slate-500 font-medium">Powered by GPT 120B (Groq)</p>
             </div>
           </div>
           

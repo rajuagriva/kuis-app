@@ -28,12 +28,11 @@ export async function askAIExplanation(questionText: string, options: any[], cor
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        // 👇 PERUBAHAN: Menggunakan Model Terbaru (Llama 3.3)
         // Model ini sangat cerdas, cepat, dan GRATIS.
-        model: "llama-3.3-70b-versatile", 
+        model: "openai/gpt-oss-120b", 
         messages: messages,
         temperature: 0.7,
-        max_tokens: 300
+        max_tokens: 600
       })
     })
 
