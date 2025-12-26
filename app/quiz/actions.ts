@@ -115,22 +115,32 @@ export async function createQuizSession(
 
   console.log("🚀 Create Session:", { mode, modules: config.moduleIds, count: config.count })
 
+
+
   // ---------------------------------------------------------
   // 2. QUERY SOAL (SUPPORT MULTI MODULE)
+  // ---------------------------------------------------------
+// 2. QUERY SOAL (SUPPORT MULTI MODULE + NAME)
   // ---------------------------------------------------------
   let query = supabase
     .from('questions')
     .select(`
       id,
+      content,
+      explanation,
       module_id, 
       module:modules!inner (
         id,
         name,
         source:sources!inner (
           id,
-          subject_id
+          subject_id,
+          subject:subjects (
+            name
+          )
         )
-      )
+      ),
+      options(id, text, is_correct)
     `)
 
   // Filter A: Jika User memilih spesifik 1 Modul
@@ -155,6 +165,7 @@ export async function createQuizSession(
     return { error: 'Tidak ada soal ditemukan untuk modul yang dipilih.' }
   }
 
+  
   // ---------------------------------------------------------
   // 3. FILTER LOGIC: CEK APAKAH SUDAH MASTER?
   // ---------------------------------------------------------
@@ -220,12 +231,15 @@ export async function createQuizSession(
     status: 'unanswered'
   }))
 
+  
+
   const { error: answersError } = await supabase
     .from('quiz_answers')
     .insert(answerInserts)
 
   if (answersError) return { error: 'Gagal menyiapkan lembar jawaban.' }
 
+  
   return { success: true, sessionId: session.id }
 }
 
@@ -576,4 +590,84 @@ export async function getProfileStats() {
   if (totalScore > 2000) level = "Sepuh Kuis 👑"
 
   return { user, profile, stats: { totalQuiz, totalScore, avgScore, level } }
+}
+
+export async function getActiveQuizSession(sessionId: string) {
+  noStore()
+  const supabase = await createClient()
+  
+  // 1. Ambil Detail Sesi
+  const { data: session } = await supabase
+    .from('quiz_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single()
+  
+  if (!session) return null
+
+  // 2. Ambil Soal + Detail Matkul
+  const { data: answers } = await supabase
+    .from('quiz_answers')
+    .select(`
+      id, status, selected_option_id,
+      question:questions (
+        id, content, explanation, created_at, module_id, 
+        module:modules (
+          id, name,
+          source:sources (
+            subject:subjects (name)
+          )
+        ),
+        options (id, text)
+      )
+    `)
+    .eq('session_id', sessionId)
+    .order('order', { ascending: true })
+
+  if (!answers) return null
+
+  // --- LOGIKA BARU: HITUNG NOMOR URUT (RANK) SEPERTI DI ADMIN ---
+  // Kita cari semua soal dari modul yang sama, lalu urutkan berdasarkan created_at
+  // Ini meniru cara Admin menampilkan nomor urut.
+  
+  const moduleIds = [...new Set(answers.map((a: any) => a.question.module_id))]
+  
+  // Ambil SEMUA ID soal dari modul-modul ini (bukan cuma yang ada di kuis)
+  const { data: allModuleQuestions } = await supabase
+    .from('questions')
+    .select('id, module_id, created_at')
+    .in('module_id', moduleIds)
+    .order('created_at', { ascending: true }) // 👈 PENTING: Urutan harus sama dengan Admin Panel
+
+  // Buat Kamus: ID Soal -> Nomor Urut
+  const bankNumberMap: Record<string, number> = {}
+  const moduleCounters: Record<string, number> = {}
+
+  allModuleQuestions?.forEach((q: any) => {
+     if (!moduleCounters[q.module_id]) moduleCounters[q.module_id] = 0
+     moduleCounters[q.module_id]++ // Hitung: 1, 2, 3...
+     
+     // Simpan nomor urutnya ke map
+     bankNumberMap[q.id] = moduleCounters[q.module_id]
+  })
+  // -------------------------------------------------------
+
+  // 3. Format Data untuk Frontend (Inject bankNumber)
+  const questions = answers.map((ans: any) => ({
+    id: ans.question.id,
+    content: ans.question.content,
+    explanation: ans.question.explanation,
+    options: ans.question.options,
+    module: ans.question.module,
+    
+    // 👇 INI KUNCINYA: Masukkan nomor urut hasil hitungan tadi
+    bankNumber: bankNumberMap[ans.question.id] || 0 
+  }))
+
+  const initialAnswers: Record<string, string> = {}
+  answers.forEach((a: any) => {
+    if (a.selected_option_id) initialAnswers[a.question.id] = a.selected_option_id
+  })
+
+  return { session, questions, initialAnswers }
 }
