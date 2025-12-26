@@ -2,36 +2,14 @@ import { createClient } from '@/utils/supabase/server'
 import { getQuizResult } from '@/app/quiz/actions'
 import Link from 'next/link'
 import { 
-  CheckCircle, 
-  XCircle, 
-  AlertCircle, 
   Trophy, 
   ArrowLeft, 
   Calendar,
   BarChart3
 } from 'lucide-react'
 import { redirect } from 'next/navigation'
-import AskAIButton from '@/components/ask-ai-button'
-import ScrollToTopButton from '@/components/scroll-to-top' // 👈 Import komponen baru
-
-// --- LIB MATEMATIKA (Untuk Render Pembahasan) ---
-import ReactMarkdown from 'react-markdown'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-
-// Helper Render Teks
-const RenderText = ({ content }: { content: string }) => (
-  <div className="prose prose-sm max-w-none text-gray-700">
-    <ReactMarkdown
-      remarkPlugins={[remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{ p: ({children}) => <p className="mb-1 inline">{children}</p> }}
-    >
-      {content}
-    </ReactMarkdown>
-  </div>
-)
+import ScrollToTopButton from '@/components/scroll-to-top' 
+import ReviewList from '@/components/review-list' // 👈 Import Komponen Baru
 
 export default async function ResultPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params
@@ -40,7 +18,6 @@ export default async function ResultPage({ params }: { params: Promise<{ session
   // 1. Ambil Data Hasil
   const result = await getQuizResult(sessionId)
   
-  // Jika tidak ditemukan atau bukan milik user login, tendang ke dashboard
   if (!result) redirect('/dashboard')
 
   const { session, reviews } = result
@@ -52,7 +29,7 @@ export default async function ResultPage({ params }: { params: Promise<{ session
   const correctCount = reviews?.filter(r => r.is_correct).length || 0
   const wrongCount = totalQuestions - correctCount
 
-  // Format Tanggal (Update: Paksa Waktu Indonesia)
+  // Format Tanggal
   const dateStr = new Date(session.created_at).toLocaleDateString('id-ID', {
     weekday: 'long', 
     year: 'numeric', 
@@ -60,16 +37,15 @@ export default async function ResultPage({ params }: { params: Promise<{ session
     day: 'numeric', 
     hour: '2-digit', 
     minute: '2-digit',
-    timeZone: 'Asia/Jakarta' // 👈 Menjamin waktu WIB/Indonesia
+    timeZone: 'Asia/Jakarta' 
   })
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 relative">
       <div className="max-w-3xl mx-auto space-y-8">
         
-        {/* KARTU UTAMA: SKOR & STATUS */}
+        {/* KARTU UTAMA: SKOR & STATUS (TETAP SAMA) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden text-center relative">
-          {/* Hiasan Background */}
           <div className={`absolute top-0 left-0 w-full h-2 ${isPassed ? 'bg-green-500' : 'bg-red-500'}`} />
           
           <div className="p-8 pb-6">
@@ -96,7 +72,6 @@ export default async function ResultPage({ params }: { params: Promise<{ session
             </div>
           </div>
 
-          {/* Statistik Grid */}
           <div className="grid grid-cols-3 border-t border-gray-100 divide-x divide-gray-100 bg-gray-50/50">
              <div className="p-4">
                <div className="text-xs text-gray-500 uppercase font-semibold">Total Soal</div>
@@ -113,98 +88,27 @@ export default async function ResultPage({ params }: { params: Promise<{ session
           </div>
         </div>
 
-        {/* TOMBOL AKSI (Update: Tombol Ulangi Dihapus) */}
+        {/* TOMBOL KEMBALI */}
         <div className="flex gap-4">
            <Link href="/dashboard" className="flex-1 bg-white border border-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl shadow-sm hover:bg-gray-50 flex items-center justify-center transition-all">
              <ArrowLeft className="w-4 h-4 mr-2" /> Kembali ke Dashboard
            </Link>
         </div>
 
-        {/* PEMBAHASAN DETAIL */}
+{/* PEMBAHASAN DETAIL */}
         <div className="space-y-4">
            <h3 className="text-lg font-bold text-gray-800 flex items-center">
              <BarChart3 className="w-5 h-5 mr-2 text-indigo-600" />
              Review Jawaban & Pembahasan
            </h3>
            
-           {reviews?.map((item: any, idx: number) => {
-             // Cek apakah benar
-             const isCorrect = item.is_correct
-             const question = item.question
-             const userAnswerId = item.selected_option_id
-             
-             // Cari teks jawaban user & kunci jawaban
-             const userOption = question.options.find((o: any) => o.id === userAnswerId)
-             const correctOption = question.options.find((o: any) => o.is_correct)
-
-             return (
-               <div key={item.id} className={`bg-white rounded-xl border p-5 transition-all ${isCorrect ? 'border-gray-200' : 'border-red-200 shadow-sm'}`}>
-                 {/* Header Soal */}
-                 <div className="flex gap-4 mb-4">
-                    <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {idx + 1}
-                    </div>
-                    <div className="grow">
-                      <div className="text-gray-900 font-medium">
-                         <RenderText content={question.content} />
-                      </div>
-                    </div>
-                 </div>
-
-                 {/* Opsi Jawaban User vs Kunci */}
-                 <div className="ml-12 space-y-2 text-sm">
-                    {/* Jawaban User */}
-                    <div className={`flex items-start gap-2 p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                       {isCorrect ? <CheckCircle className="w-5 h-5 text-green-600 shrink-0" /> : <XCircle className="w-5 h-5 text-red-600 shrink-0" />}
-                       <div>
-                         <span className="text-xs font-bold uppercase opacity-70 block mb-1">Jawaban Anda:</span>
-                         <span className={isCorrect ? 'text-green-800 font-medium' : 'text-red-800 font-medium'}>
-                           {userOption ? <RenderText content={userOption.text} /> : '(Tidak Dijawab)'}
-                         </span>
-                       </div>
-                    </div>
-
-                    {/* Kunci Jawaban (Hanya muncul jika salah) */}
-                    {!isCorrect && correctOption && (
-                      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
-                         <CheckCircle className="w-5 h-5 text-blue-600 shrink-0" />
-                         <div>
-                           <span className="text-xs font-bold uppercase text-blue-600 opacity-70 block mb-1">Kunci Jawaban:</span>
-                           <span className="text-gray-800 font-medium">
-                              <RenderText content={correctOption.text} />
-                           </span>
-                         </div>
-                      </div>
-                    )}
-                 </div>
-
-                 {/* Pembahasan */}
-                 {question.explanation && (
-                   <div className="ml-12 mt-4 pt-4 border-t border-gray-100">
-                      <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase mb-2">
-                        <AlertCircle className="w-4 h-4" /> Pembahasan:
-                      </div>
-                      <div className="text-gray-600 text-sm bg-gray-50 p-3 rounded-lg">
-                        <RenderText content={question.explanation} />
-                      </div>
-                   </div>
-                 )}
-
-                 {/* Tombol Tanya AI */}
-                 <AskAIButton
-                   questionContent={question.content}
-                   options={question.options}
-                   correctAnswerText={correctOption?.text || ''}
-                 />
-
-               </div>
-             )
-           })}
+           {/* 👇 PERBAIKAN: Tambahkan "|| []" agar tidak null */}
+           <ReviewList reviews={reviews || []} />
+           
         </div>
 
       </div>
       
-      {/* 4. Tombol Scroll ke Atas (Mengambang) */}
       <ScrollToTopButton />
     </div>
   )
