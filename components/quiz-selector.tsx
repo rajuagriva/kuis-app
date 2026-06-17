@@ -73,14 +73,18 @@ const result = await createQuizSession(mode, {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 border border-gray-200">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">Mulai Belajar Baru</h3>
+    <div className="glass-card rounded-2xl p-5 border border-slate-200/80 bg-white shadow-sm">
+      <h3 className="text-sm font-black text-slate-800 mb-4 uppercase tracking-wider">Mulai Latihan Baru</h3>
       
       <div className="space-y-4">
         {/* Pilih Mata Kuliah */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Mata Kuliah</label>
-          <select className="block w-full rounded-md border border-gray-300 p-2" value={selectedSubject} onChange={handleSubjectChange}>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Mata Kuliah</label>
+          <select 
+            className="block w-full rounded-xl glass-input p-2.5 text-xs font-semibold focus:border-indigo-500 border border-slate-200 outline-none" 
+            value={selectedSubject} 
+            onChange={handleSubjectChange}
+          >
             <option value="">-- Pilih Mata Kuliah --</option>
             {initialSubjects.map((sub) => (
               <option key={sub.id} value={sub.id}>{sub.code} - {sub.name}</option>
@@ -90,8 +94,13 @@ const result = await createQuizSession(mode, {
 
         {/* Pilih Sumber */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Kategori / Sumber</label>
-          <select className="block w-full rounded-md border border-gray-300 p-2 disabled:bg-gray-100" value={selectedSource} onChange={handleSourceChange} disabled={!selectedSubject}>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Kategori / Sumber</label>
+          <select 
+            className="block w-full rounded-xl glass-input p-2.5 text-xs font-semibold focus:border-indigo-500 border border-slate-200 outline-none disabled:bg-slate-50 disabled:text-slate-400" 
+            value={selectedSource} 
+            onChange={handleSourceChange} 
+            disabled={!selectedSubject}
+          >
             <option value="">-- Pilih Sumber --</option>
             {sources.map((src) => (<option key={src.id} value={src.id}>{src.name}</option>))}
           </select>
@@ -99,12 +108,12 @@ const result = await createQuizSession(mode, {
 
         {/* Pilih Modul (Checklist) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Modul / Bab (Bisa Lebih dari 1)</label>
-          <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto bg-gray-50 space-y-2">
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Pilih Modul / Bab</label>
+          <div className="border border-slate-200 rounded-xl p-3 max-h-40 overflow-y-auto bg-slate-50/50 space-y-1.5">
             {!selectedSource ? (
-              <p className="text-sm text-gray-400 text-center py-2">Pilih Kategori dulu</p>
+              <p className="text-xs text-slate-400 text-center py-4 font-medium">Pilih Kategori terlebih dahulu</p>
             ) : modules.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-2">Tidak ada modul</p>
+              <p className="text-xs text-slate-400 text-center py-4 font-medium">Tidak ada modul</p>
             ) : (
               modules.map((mod) => {
                 const isSelected = selectedModules.includes(mod.id)
@@ -112,41 +121,46 @@ const result = await createQuizSession(mode, {
                   <div 
                     key={mod.id} 
                     onClick={() => toggleModule(mod.id)}
-                    className={`flex items-center p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-100 border border-transparent'}`}
+                    className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 border border-indigo-200/50' : 'hover:bg-slate-100/50 border border-transparent'}`}
                   >
-                    <div className={`mr-3 ${isSelected ? 'text-indigo-600' : 'text-gray-400'}`}>
-                      {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                    <div className={`mr-2.5 ${isSelected ? 'text-indigo-650' : 'text-slate-400'}`}>
+                      {isSelected ? <CheckSquare className="w-4.5 h-4.5" /> : <Square className="w-4.5 h-4.5" />}
                     </div>
-                    <span className={`text-sm ${isSelected ? 'font-medium text-indigo-900' : 'text-gray-700'}`}>{mod.name}</span>
+                    <span className={`text-xs ${isSelected ? 'font-bold text-indigo-950' : 'text-slate-700 font-medium'}`}>{mod.name}</span>
                   </div>
                 )
               })
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-right">{selectedModules.length} Modul terpilih</p>
+          <p className="text-[10px] text-slate-450 mt-1 text-right font-semibold">{selectedModules.length} Modul terpilih</p>
         </div>
 
         {/* Jumlah Soal */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Soal</label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Jumlah Soal</label>
           <input 
             type="number" 
             min={1} 
             max={100} 
             value={questionCount}
             onChange={(e) => setQuestionCount(Number(e.target.value))}
-            className="block w-full rounded-md border border-gray-300 p-2"
+            className="block w-full rounded-xl glass-input p-2.5 text-xs font-semibold focus:border-indigo-500 border border-slate-200 outline-none"
           />
-          <p className="text-xs text-gray-500 mt-1">Soal akan diambil secara acak.</p>
         </div>
 
         {/* Mode Selector */}
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          <button onClick={() => setMode('exam')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'exam' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600' : 'border-gray-200 text-gray-600'}`}>
-            <Clock className="w-4 h-4 mr-2" /> Mode Ujian
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button 
+            onClick={() => setMode('exam')} 
+            className={`flex items-center justify-center px-4 py-2.5 border rounded-xl text-xs font-bold transition-all ${mode === 'exam' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-200 text-slate-500 hover:text-slate-750 hover:bg-slate-50'}`}
+          >
+            <Clock className="w-4 h-4 mr-1.5" /> Mode Ujian
           </button>
-          <button onClick={() => setMode('study')} className={`flex items-center justify-center px-4 py-3 border rounded-lg text-sm font-medium ${mode === 'study' ? 'border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600' : 'border-gray-200 text-gray-600'}`}>
-            <BookOpen className="w-4 h-4 mr-2" /> Mode Belajar
+          <button 
+            onClick={() => setMode('study')} 
+            className={`flex items-center justify-center px-4 py-2.5 border rounded-xl text-xs font-bold transition-all ${mode === 'study' ? 'border-emerald-600 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 text-slate-500 hover:text-slate-750 hover:bg-slate-50'}`}
+          >
+            <BookOpen className="w-4 h-4 mr-1.5" /> Mode Belajar
           </button>
         </div>
 
@@ -154,7 +168,7 @@ const result = await createQuizSession(mode, {
         <button
           onClick={handleStartQuiz}
           disabled={selectedModules.length === 0 || isLoading}
-          className="w-full flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="w-full flex justify-center items-center gap-2 rounded-xl bg-indigo-650 hover:bg-indigo-600 disabled:bg-indigo-750 text-xs font-black uppercase tracking-wider text-white shadow-md hover:shadow-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all py-3.5 mt-2"
         >
           {isLoading ? (
             <>
@@ -162,7 +176,7 @@ const result = await createQuizSession(mode, {
               Menyiapkan Soal...
             </>
           ) : (
-            `Mulai Mengerjakan (${questionCount} Soal)`
+            `Mulai Latihan (${questionCount} Soal)`
           )}
         </button>
       </div>

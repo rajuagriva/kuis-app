@@ -84,11 +84,16 @@ export async function uploadQuizData(prevState: any, formData: FormData) {
                )
 
                if (mod.questions) {
-                 for (const q of mod.questions) {
-                   const { data: newQ, error: qError } = await supabase
-                     .from('questions')
-                     .insert({ content: q.content, explanation: q.explanation, module_id: moduleId })
-                     .select('id').single()
+                  for (const q of mod.questions) {
+                    const { data: newQ, error: qError } = await supabase
+                      .from('questions')
+                      .insert({ 
+                        content: q.content, 
+                        explanation: q.explanation, 
+                        module_id: moduleId,
+                        type: q.type || 'multiple_choice' 
+                      })
+                      .select('id').single()
 
                    if (qError) throw qError
                    totalQuestions++
@@ -109,7 +114,7 @@ export async function uploadQuizData(prevState: any, formData: FormData) {
       }
     }
 
-    revalidatePath('/admin/dashboard')
+    revalidatePath('/admin')
     return { success: true, message: `Sukses! ${totalQuestions} soal berhasil diproses.` }
 
   } catch (error: any) {
@@ -168,7 +173,7 @@ export async function updateSubject(id: string, name: string, code: string, mast
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/admin/subjects')
+  revalidatePath('/admin')
   revalidatePath('/dashboard')
   revalidatePath('/', 'layout')
   return { success: true }
@@ -214,7 +219,7 @@ export async function updateQuestion(id: string, content: string, explanation: s
   const { error } = await supabase.from('questions').update({ content, explanation }).eq('id', id)
   if (error) throw new Error(error.message)
   
-  revalidatePath('/admin/questions')
+  revalidatePath('/admin')
   return { success: true }
 }
 
@@ -227,7 +232,7 @@ export async function deleteQuestion(id: string) {
   const { error } = await supabase.from('questions').delete().eq('id', id)
   if (error) throw new Error(error.message)
 
-  revalidatePath('/admin/questions')
+  revalidatePath('/admin')
   return { success: true }
 }
 
@@ -240,7 +245,7 @@ export async function deleteEntity(table: 'subjects' | 'sources' | 'modules', id
   const { error } = await supabase.from(table).delete().eq('id', id)
   if (error) throw new Error(error.message)
 
-  revalidatePath('/admin/questions')
+  revalidatePath('/admin')
   return { success: true }
 }
 
@@ -311,6 +316,28 @@ export async function toggleStudentEnrollment(userId: string, subjectId: string,
     if (error) throw new Error(error.message)
   }
 
-  revalidatePath('/admin/enrollment')
+  revalidatePath('/admin')
   return { success: true }
+}
+
+export async function getAllAiUsageLogs() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data: adminCheck } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (adminCheck?.role !== 'admin') throw new Error('Anda bukan Admin. Akses ditolak.')
+
+  const { data, error } = await supabase
+    .from('ai_usage_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (error) {
+    console.error('Error fetching AI usage logs:', error)
+    return []
+  }
+
+  return data
 }

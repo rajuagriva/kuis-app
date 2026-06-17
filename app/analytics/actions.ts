@@ -9,16 +9,7 @@ export async function getDetailedAnalytics() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  // 1. Ambil Mata Kuliah yang diambil user
-  const { data: enrollment } = await supabase
-    .from('student_subjects')
-    .select('subject_id')
-    .eq('user_id', user.id)
-
-  const allowedSubjectIds = enrollment?.map((e: any) => e.subject_id) || []
-  if (allowedSubjectIds.length === 0) return []
-
-  // 2. Ambil Struktur Hirarki (Subject -> Source -> Module)
+  // 1. Ambil Semua Struktur Hirarki (Subject -> Source -> Module)
   const { data: subjects } = await supabase
     .from('subjects')
     .select(`
@@ -30,7 +21,6 @@ export async function getDetailedAnalytics() {
         )
       )
     `)
-    .in('id', allowedSubjectIds)
     .order('name')
 
   if (!subjects) return []

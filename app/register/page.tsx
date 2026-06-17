@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { signup } from '@/app/login/actions'
+import { GraduationCap } from 'lucide-react'
 
 export default async function RegisterPage({
   searchParams,
@@ -10,108 +11,114 @@ export default async function RegisterPage({
   const message = params?.message
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden" suppressHydrationWarning>
+      
+      {/* Background Glows */}
+      <div className="absolute top-[20%] left-[-10%] w-[40%] h-[40%] rounded-full blur-[100px] opacity-15 bg-indigo-200"></div>
+      <div className="absolute bottom-[20%] right-[-10%] w-[40%] h-[40%] rounded-full blur-[100px] opacity-15 bg-violet-200"></div>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center mb-8">
+        <Link href="/" className="inline-flex items-center gap-2 mb-4 group">
+          <div className="p-2 rounded-xl bg-indigo-600 shadow-md group-hover:scale-105 transition-transform">
+            <GraduationCap className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-xl font-black text-slate-900 tracking-wide">LetsUjian</span>
+        </Link>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">
           Buat Akun Baru
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Isi data diri Anda untuk mulai belajar
+        <p className="mt-2 text-sm text-slate-500 font-medium">
+          Silakan isi data untuk memulai latihan ujian Anda
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-200">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div className="glass-card py-8 px-6 sm:px-10 rounded-3xl border border-slate-200/80 shadow-xl bg-white">
           
-          <form className="space-y-6">
-            
-            {/* Nama Lengkap */}
+          <form className="space-y-5">
             <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="fullName"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5"
+              >
                 Nama Lengkap
               </label>
-              <div className="mt-1">
-                <input
-                  id="fullName"
-                  name="fullName"
-                  type="text"
-                  required
-                  placeholder="Contoh: Budi Santoso"
-                  className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                required
+                placeholder="Contoh: Budi Santoso"
+                className="block w-full rounded-xl glass-input px-4 py-3 text-sm placeholder-slate-400"
+              />
             </div>
 
-            {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="email"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5"
+              >
                 Email
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="nama@email.com"
-                  className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="nama@email.com"
+                className="block w-full rounded-xl glass-input px-4 py-3 text-sm placeholder-slate-400"
+              />
             </div>
 
-            {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="password"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5"
+              >
                 Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="Minimal 6 karakter"
-                  className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                minLength={6}
+                placeholder="Minimal 6 karakter"
+                className="block w-full rounded-xl glass-input px-4 py-3 text-sm placeholder-slate-400"
+              />
             </div>
 
             {/* Error Message */}
             {message && (
-              <div className="rounded-md bg-red-50 p-4">
-                <div className="text-sm text-red-700">
-                  <p>{message}</p>
+              <div className="rounded-xl bg-red-50 border border-red-200 p-4 animate-in fade-in slide-in-from-top-2">
+                <div className="text-xs text-red-600 font-semibold">
+                  {message}
                 </div>
               </div>
             )}
 
-            {/* Tombol Daftar */}
-            <div>
+            <div className="pt-2">
               <button
                 formAction={signup}
-                className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="flex w-full justify-center rounded-xl bg-indigo-600 hover:bg-indigo-700 py-3 px-4 text-sm font-black text-white shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 hover:scale-[1.01]"
               >
                 Daftar Sekarang
               </button>
             </div>
           </form>
 
-          {/* Link Login */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-2 text-gray-500">Sudah punya akun?</span>
-              </div>
+          {/* Login Link */}
+          <div className="mt-8 border-t border-slate-100 pt-6">
+            <div className="text-center text-xs text-slate-500 font-bold uppercase tracking-wider">
+              Sudah punya akun?
             </div>
-
-            <div className="mt-6 text-center">
-              <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Masuk di sini
+            <div className="mt-4 text-center">
+              <Link 
+                href="/login" 
+                className="inline-flex justify-center w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 py-3 text-xs font-bold text-slate-600 hover:text-slate-900 transition-all"
+              >
+                Masuk ke Akun
               </Link>
             </div>
           </div>

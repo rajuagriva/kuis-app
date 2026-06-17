@@ -20,22 +20,9 @@ export async function getSubjects() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
-  // 1. Cek dulu user terdaftar di matkul apa saja
-  const { data: enrollment } = await supabase
-    .from('student_subjects')
-    .select('subject_id')
-    .eq('user_id', user.id)
-  
-  // Jika tidak ada enrollment, return kosong
-  if (!enrollment || enrollment.length === 0) return []
-
-  const allowedSubjectIds = enrollment.map((e: any) => e.subject_id)
-
-  // 2. Ambil hanya subject yang ID-nya ada di daftar enrollment
   const { data, error } = await supabase
     .from('subjects')
     .select('id, name, code, mastery_threshold')
-    .in('id', allowedSubjectIds) 
     .order('name')
 
   if (error) {
@@ -93,7 +80,7 @@ export async function getUserStats() {
 // CORE LOGIC: CREATE SESSION & DISTRIBUSI SOAL (SECURED & FILTERED BY MASTERY)
 // ============================================================================
 export async function createQuizSession(
-  mode: 'practice' | 'exam' | 'study',
+  mode: 'practice' | 'exam' | 'study' | 'essay',
   config: { 
     subjectId?: string; 
     topicId?: string;    // Untuk single module
@@ -115,12 +102,8 @@ export async function createQuizSession(
 
   console.log("🚀 Create Session:", { mode, modules: config.moduleIds, count: config.count })
 
-
-
   // ---------------------------------------------------------
-  // 2. QUERY SOAL (SUPPORT MULTI MODULE)
-  // ---------------------------------------------------------
-// 2. QUERY SOAL (SUPPORT MULTI MODULE + NAME)
+  // 2. QUERY SOAL (SUPPORT MULTI MODULE + NAME)
   // ---------------------------------------------------------
   let query = supabase
     .from('questions')
@@ -128,7 +111,8 @@ export async function createQuizSession(
       id,
       content,
       explanation,
-      module_id, 
+      module_id,
+      type,
       module:modules!inner (
         id,
         name,
@@ -142,6 +126,13 @@ export async function createQuizSession(
       ),
       options(id, text, is_correct)
     `)
+
+  // Filter Aksen: Mode Essay vs Mode Biasa
+  if (mode === 'essay') {
+    query = query.eq('type', 'essay')
+  } else {
+    query = query.or('type.eq.multiple_choice,type.is.null')
+  }
 
   // Filter A: Jika User memilih spesifik 1 Modul
   if (config.topicId) {
@@ -269,43 +260,68 @@ export async function submitQuiz(sessionId: string, answers: Record<string, stri
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
-  const questionIds = Object.keys(answers)
-  if (questionIds.length === 0) throw new Error('Tidak ada jawaban')
+  // Ambil semua lembar jawaban yang sudah disiapkan di database untuk sesi ini
+  const { data: dbAnswers, error: dbAnswersError } = await supabase
+    .from('quiz_answers')
+    .select('question_id, selected_option_id')
+    .eq('session_id', sessionId)
 
+  if (dbAnswersError || !dbAnswers || dbAnswers.length === 0) {
+    throw new Error('Gagal memuat detail kuis atau sesi tidak valid')
+  }
+
+  const allQuestionIds = dbAnswers.map((a: any) => a.question_id)
+
+  // Gabungkan jawaban dari client (misal untuk Mode Belajar yang tidak auto-save ke DB)
+  // dengan jawaban yang sudah tersimpan di database.
+  const finalAnswers: Record<string, string | null> = {}
+  for (const dbAns of dbAnswers) {
+    finalAnswers[dbAns.question_id] = dbAns.selected_option_id
+  }
+  for (const [qId, optId] of Object.entries(answers)) {
+    if (optId) {
+      finalAnswers[qId] = optId
+    }
+  }
+
+  // Ambil data soal beserta opsi benarnya
   const { data: questions } = await supabase
     .from('questions')
     .select('id, content, options(id, text, is_correct)')
-    .in('id', questionIds)
+    .in('id', allQuestionIds)
 
   if (!questions) throw new Error('Gagal memuat soal')
 
   let correctCount = 0
   const masteryUpdates = []
 
-  for (const qId of questionIds) {
-    const selectedOptId = answers[qId]
-    const question = questions.find((q: any) => q.id === qId)
+  for (const question of questions) {
+    const qId = question.id
+    const selectedOptId = finalAnswers[qId]
     
-    if (question && question.options) {
-        const correctOption = question.options.find((o: any) => o.is_correct)
-        const isCorrect = correctOption?.id === selectedOptId
-        if (isCorrect) correctCount++
+    if (question.options) {
+      const correctOption = question.options.find((o: any) => o.is_correct)
+      const isCorrect = selectedOptId ? correctOption?.id === selectedOptId : false
+      if (isCorrect) correctCount++
 
-        await supabase
-          .from('quiz_answers')
-          .update({
-             selected_option_id: selectedOptId,
-             is_correct: isCorrect,
-             status: 'answered'
-          })
-          .eq('session_id', sessionId)
-          .eq('question_id', qId)
+      // Update lembar jawaban di database
+      await supabase
+        .from('quiz_answers')
+        .update({
+           selected_option_id: selectedOptId || null,
+           is_correct: isCorrect,
+           status: selectedOptId ? 'answered' : 'unanswered'
+        })
+        .eq('session_id', sessionId)
+        .eq('question_id', qId)
 
-        if (isCorrect) masteryUpdates.push(qId)
+      if (isCorrect) masteryUpdates.push(qId)
     }
   }
 
-  const score = Math.round((correctCount / questionIds.length) * 100)
+  const score = allQuestionIds.length > 0
+    ? Math.round((correctCount / allQuestionIds.length) * 100)
+    : 0
 
   await supabase.from('quiz_sessions')
     .update({ status: 'completed', score, completed_at: new Date().toISOString() })
@@ -315,7 +331,9 @@ export async function submitQuiz(sessionId: string, answers: Record<string, stri
     const { data: existing } = await supabase
       .from('user_mastery')
       .select('correct_count')
-      .eq('user_id', user.id).eq('question_id', qId).single()
+      .eq('user_id', user.id)
+      .eq('question_id', qId)
+      .maybeSingle()
 
     if (existing) {
       await supabase.from('user_mastery')
@@ -334,19 +352,39 @@ export async function submitQuiz(sessionId: string, answers: Record<string, stri
 // Result
 export async function getQuizResult(sessionId: string) {
   const supabase = await createClient()
-  const { data: session } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from('quiz_sessions')
-    .select(`*, quiz_title, module:modules(name, source:sources(name, subject:subjects(name, code)))`)
+    .select(`*`)
     .eq('id', sessionId).single()
 
-  if (!session) return null
-  const { data: { user } } = await supabase.auth.getUser()
-  if (session.user_id !== user?.id) return null 
+  if (sessionError) {
+    console.error(`🔥 getQuizResult: Gagal memuat sesi kuis ${sessionId}:`, sessionError)
+  }
 
-  const { data: answers } = await supabase
+  if (!session) {
+    console.warn(`⚠️ getQuizResult: Sesi kuis ${sessionId} tidak ditemukan di database.`)
+    return null
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    console.warn(`⚠️ getQuizResult: Tidak ada user yang login saat mengakses sesi ${sessionId}.`)
+    return null
+  }
+
+  if (session.user_id !== user.id) {
+    console.warn(`⚠️ getQuizResult: User mismatch. Pemilik sesi: ${session.user_id}, User login: ${user.id}`)
+    return null 
+  }
+
+  const { data: answers, error: answersError } = await supabase
     .from('quiz_answers')
-    .select(`id, selected_option_id, is_correct, question:questions(id, content, explanation, options(id, text, is_correct))`)
+    .select(`id, selected_option_id, is_correct, essay_answer, ai_score, ai_feedback, question:questions(id, content, explanation, options(id, text, is_correct))`)
     .eq('session_id', sessionId)
+
+  if (answersError) {
+    console.error(`🔥 getQuizResult: Gagal memuat jawaban untuk sesi ${sessionId}:`, answersError)
+  }
 
   return { session, reviews: answers }
 }
@@ -357,14 +395,6 @@ export async function getQuizHistory() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
-
-  const { data: enrollment } = await supabase
-    .from('student_subjects')
-    .select('subject_id')
-    .eq('user_id', user.id)
-  
-  const allowedSubjectIds = new Set(enrollment?.map((e: any) => e.subject_id) || [])
-  if (allowedSubjectIds.size === 0) return []
 
   const { data: sessions } = await supabase
     .from('quiz_sessions')
@@ -425,7 +455,7 @@ export async function getQuizHistory() {
         }
       }
     }
-  }).filter((item: any) => item && allowedSubjectIds.has(item.module.source.subject.id))
+  }).filter((item: any) => item !== null)
 }
 
 // ============================================================================
@@ -670,4 +700,106 @@ export async function getActiveQuizSession(sessionId: string) {
   })
 
   return { session, questions, initialAnswers }
+}
+
+export async function saveEssayMastery(questionId: string, score: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const isMastered = score >= 70
+
+  const { data: existing } = await supabase
+    .from('user_mastery')
+    .select('correct_count, incorrect_count')
+    .eq('user_id', user.id)
+    .eq('question_id', questionId)
+    .maybeSingle()
+
+  if (isMastered) {
+    if (existing) {
+      await supabase.from('user_mastery')
+        .update({ correct_count: (existing.correct_count || 0) + 1, last_answered_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('question_id', questionId)
+    } else {
+      await supabase.from('user_mastery')
+        .insert({ user_id: user.id, question_id: questionId, correct_count: 1 })
+    }
+  } else {
+    if (existing) {
+      await supabase.from('user_mastery')
+        .update({ incorrect_count: (existing.incorrect_count || 0) + 1, last_answered_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('question_id', questionId)
+    } else {
+      await supabase.from('user_mastery')
+        .insert({ user_id: user.id, question_id: questionId, incorrect_count: 1 })
+    }
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true, mastered: isMastered }
+}
+
+export async function saveEssayAnswer(
+  sessionId: string,
+  questionId: string,
+  answer: string,
+  score: number,
+  feedback: string
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('quiz_answers')
+    .update({
+      essay_answer: answer,
+      ai_score: score,
+      ai_feedback: feedback,
+      is_correct: score >= 70,
+      status: 'answered'
+    })
+    .eq('session_id', sessionId)
+    .eq('question_id', questionId)
+
+  if (error) throw error
+
+  // Save to user_mastery
+  await saveEssayMastery(questionId, score)
+
+  return { success: true }
+}
+
+export async function submitEssayQuiz(sessionId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data: answers } = await supabase
+    .from('quiz_answers')
+    .select('ai_score')
+    .eq('session_id', sessionId)
+
+  if (!answers) throw new Error('Gagal memuat jawaban')
+
+  const answered = answers.filter((a: any) => a.ai_score !== null)
+  const totalScore = answered.reduce((acc, curr) => acc + (curr.ai_score || 0), 0)
+  const avgScore = answered.length > 0 ? Math.round(totalScore / answered.length) : 0
+
+  const { error } = await supabase
+    .from('quiz_sessions')
+    .update({
+      status: 'completed',
+      score: avgScore,
+      completed_at: new Date().toISOString()
+    })
+    .eq('id', sessionId)
+
+  if (error) throw error
+
+  revalidatePath('/dashboard')
+  return { success: true }
 }

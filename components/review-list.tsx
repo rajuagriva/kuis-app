@@ -1,16 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle, XCircle, AlertCircle, Filter } from 'lucide-react'
+import { CheckCircle, XCircle, AlertCircle, Filter, Award } from 'lucide-react'
 import AskAIButton from '@/components/ask-ai-button'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 
-// Helper Render Teks (Kita pindahkan ke sini karena dipakai di Client)
 const RenderText = ({ content }: { content: string }) => (
-  <div className="prose prose-sm max-w-none text-gray-700">
+  <div className="prose max-w-none text-slate-800 font-medium">
     <ReactMarkdown
       remarkPlugins={[remarkMath]}
       rehypePlugins={[rehypeKatex]}
@@ -21,31 +20,34 @@ const RenderText = ({ content }: { content: string }) => (
   </div>
 )
 
-export default function ReviewList({ reviews }: { reviews: any[] }) {
-  // State untuk Filter: 'all' | 'correct' | 'wrong'
+interface ReviewListProps {
+  reviews: any[]
+  isEssay?: boolean
+}
+
+export default function ReviewList({ reviews, isEssay = false }: ReviewListProps) {
   const [filter, setFilter] = useState<'all' | 'correct' | 'wrong'>('all')
 
-  // Logika Filter Data
   const filteredReviews = reviews.filter((item) => {
     if (filter === 'correct') return item.is_correct
     if (filter === 'wrong') return !item.is_correct
-    return true // 'all'
+    return true
   })
 
   return (
     <div className="space-y-6">
-      {/* --- TOMBOL FILTER --- */}
-      <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-2 px-3 text-sm font-bold text-gray-500 border-r border-gray-200 mr-1">
-          <Filter className="w-4 h-4" /> Filter:
+      {/* FILTER BUTTONS */}
+      <div className="flex flex-wrap items-center gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 px-3 text-xs font-bold text-slate-500 border-r border-slate-200 mr-1">
+          <Filter className="w-4 h-4 text-indigo-600" /> Filter:
         </div>
         
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
+          className={`px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${
             filter === 'all' 
-              ? 'bg-gray-800 text-white shadow-md' 
-              : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/10' 
+              : 'bg-slate-50 text-slate-655 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
           }`}
         >
           Semua ({reviews.length})
@@ -53,100 +55,153 @@ export default function ReviewList({ reviews }: { reviews: any[] }) {
 
         <button
           onClick={() => setFilter('correct')}
-          className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+          className={`px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-1.5 ${
             filter === 'correct' 
-              ? 'bg-green-600 text-white shadow-md' 
-              : 'bg-green-50 text-green-700 hover:bg-green-100'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/10' 
+              : 'bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 border border-emerald-200/50'
           }`}
         >
-          <CheckCircle className="w-4 h-4" /> Benar ({reviews.filter(r => r.is_correct).length})
+          <CheckCircle className="w-3.5 h-3.5" /> {isEssay ? 'Mastered (>=70)' : 'Benar'} ({reviews.filter(r => r.is_correct).length})
         </button>
 
         <button
           onClick={() => setFilter('wrong')}
-          className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+          className={`px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-1.5 ${
             filter === 'wrong' 
-              ? 'bg-red-600 text-white shadow-md' 
-              : 'bg-red-50 text-red-700 hover:bg-red-100'
+              ? 'bg-red-600 text-white shadow-md shadow-red-500/10' 
+              : 'bg-red-50/50 text-red-755 hover:bg-red-50 hover:text-red-900 border border-red-200/50'
           }`}
         >
-          <XCircle className="w-4 h-4" /> Salah ({reviews.filter(r => !r.is_correct).length})
+          <XCircle className="w-3.5 h-3.5" /> {isEssay ? 'Coba Lagi (<70)' : 'Salah'} ({reviews.filter(r => !r.is_correct).length})
         </button>
       </div>
 
-      {/* --- DAFTAR SOAL (HASIL FILTER) --- */}
-      <div className="space-y-4">
+      {/* QUESTIONS LIST */}
+      <div className="space-y-5">
         {filteredReviews.length === 0 ? (
-           <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
-             Tidak ada soal dengan filter ini.
-           </div>
+          <div className="text-center py-12 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-sm bg-white shadow-sm">
+            Tidak ada kuis dengan filter ini.
+          </div>
         ) : (
           filteredReviews.map((item: any, idx: number) => {
-            // Kita cari index asli dari array utama agar nomor soal tidak acak saat difilter
             const originalIndex = reviews.findIndex(r => r.id === item.id) + 1
-
             const isCorrect = item.is_correct
             const question = item.question
             const userAnswerId = item.selected_option_id
-            const userOption = question.options.find((o: any) => o.id === userAnswerId)
-            const correctOption = question.options.find((o: any) => o.is_correct)
+            const userOption = question.options?.find((o: any) => o.id === userAnswerId)
+            const correctOption = question.options?.find((o: any) => o.is_correct)
 
             return (
-              <div key={item.id} className={`bg-white rounded-xl border p-5 transition-all animate-in fade-in slide-in-from-bottom-2 ${isCorrect ? 'border-gray-200' : 'border-red-200 shadow-sm'}`}>
+              <div 
+                key={item.id} 
+                className={`glass-card rounded-3xl p-6 border transition-all duration-300 relative overflow-hidden ${
+                  isCorrect 
+                    ? 'border-slate-200 hover:border-indigo-200 shadow-sm' 
+                    : 'border-red-200 bg-red-50/10 hover:border-red-300 shadow-sm'
+                }`}
+              >
                 {/* Header Soal */}
-                <div className="flex gap-4 mb-4">
-                  <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                <div className="flex gap-4 mb-5">
+                  <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm border ${
+                    isCorrect 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                      : 'bg-red-50 text-red-755 border-red-250'
+                  }`}>
                     {originalIndex}
                   </div>
-                  <div className="grow">
-                    <div className="text-gray-900 font-medium">
-                        <RenderText content={question.content} />
-                    </div>
+                  <div className="grow pt-1 text-sm sm:text-base leading-relaxed text-slate-800 font-semibold">
+                    <RenderText content={question.content} />
                   </div>
                 </div>
 
-                {/* Opsi Jawaban */}
-                <div className="ml-12 space-y-2 text-sm">
-                  <div className={`flex items-start gap-2 p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                      {isCorrect ? <CheckCircle className="w-5 h-5 text-green-600 shrink-0" /> : <XCircle className="w-5 h-5 text-red-600 shrink-0" />}
-                      <div>
-                        <span className="text-xs font-bold uppercase opacity-70 block mb-1">Jawaban Anda:</span>
-                        <span className={isCorrect ? 'text-green-800 font-medium' : 'text-red-800 font-medium'}>
-                          {userOption ? <RenderText content={userOption.text} /> : '(Tidak Dijawab)'}
-                        </span>
+                {/* Hasil Pilihan / Essay Answer */}
+                <div className="sm:ml-12 space-y-3">
+                  {isEssay ? (
+                    <>
+                      {/* Essay Answer */}
+                      <div className="flex items-start gap-3 p-4 rounded-2xl border bg-slate-50 border-slate-200">
+                        <div className="w-full">
+                          <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 opacity-70 text-slate-500">Jawaban Anda:</span>
+                          <p className="text-sm font-medium text-slate-800 whitespace-pre-wrap leading-relaxed">
+                            {item.essay_answer || <span className="italic text-slate-400">(Tidak Dijawab)</span>}
+                          </p>
+                        </div>
                       </div>
-                  </div>
 
-                  {!isCorrect && correctOption && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
-                        <CheckCircle className="w-5 h-5 text-blue-600 shrink-0" />
+                      {/* AI Feedback & Score */}
+                      <div className={`flex items-start gap-3 p-4 rounded-2xl border ${
+                        isCorrect 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                          : 'bg-amber-55 border-amber-200 text-amber-800'
+                      }`}>
+                        <Award className="w-5 h-5 shrink-0 mt-0.5 text-indigo-600" />
                         <div>
-                          <span className="text-xs font-bold uppercase text-blue-600 opacity-70 block mb-1">Kunci Jawaban:</span>
-                          <span className="text-gray-800 font-medium">
-                            <RenderText content={correctOption.text} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 opacity-70">
+                            Penilaian AI: Skor {item.ai_score ?? 0}
+                          </span>
+                          <p className="text-sm font-semibold leading-relaxed text-slate-800">
+                            {item.ai_feedback || <span className="italic text-slate-400">(Tidak ada feedback dari AI)</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* MCQ Answer */}
+                      <div className={`flex items-start gap-3 p-4 rounded-2xl border ${
+                        isCorrect 
+                          ? 'bg-emerald-50/50 border-emerald-200 text-emerald-805' 
+                          : 'bg-red-50/55 border-red-200 text-red-805'
+                      }`}>
+                        {isCorrect 
+                          ? <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" /> 
+                          : <XCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                        }
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 opacity-70">Jawaban Anda:</span>
+                          <span className="text-sm font-bold leading-relaxed text-slate-800">
+                            {userOption ? <RenderText content={userOption.text} /> : <span className="italic text-slate-500">(Tidak Dijawab)</span>}
                           </span>
                         </div>
-                    </div>
+                      </div>
+
+                      {!isCorrect && correctOption && (
+                        <div className="flex items-start gap-3 p-4 rounded-2xl bg-indigo-50/55 border border-indigo-200 text-indigo-700">
+                          <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider block mb-1 opacity-70">Kunci Jawaban:</span>
+                            <span className="text-sm font-bold leading-relaxed text-slate-850">
+                              <RenderText content={correctOption.text} />
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
                 {/* Pembahasan */}
                 {question.explanation && (
-                  <div className="ml-12 mt-4 pt-4 border-t border-gray-100">
-                      <div className="flex items-center gap-2 text-gray-500 text-xs font-bold uppercase mb-2">
-                        <AlertCircle className="w-4 h-4" /> Pembahasan:
-                      </div>
-                      <div className="text-gray-600 text-sm bg-gray-50 p-3 rounded-lg">
-                        <RenderText content={question.explanation} />
-                      </div>
+                  <div className="sm:ml-12 mt-5 pt-5 border-t border-slate-200">
+                    <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-indigo-650" />
+                      {isEssay ? 'Jawaban Acuan / Pembahasan' : 'Pembahasan Soal'}
+                    </h5>
+                    <div className="text-xs text-slate-700 leading-relaxed font-medium bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+                      <RenderText content={question.explanation} />
+                    </div>
                   </div>
                 )}
 
-                <AskAIButton
-                  questionContent={question.content}
-                  options={question.options}
-                  correctAnswerText={correctOption?.text || ''}
-                />
+                {!isEssay && (
+                  <div className="sm:ml-12">
+                    <AskAIButton
+                      questionContent={question.content}
+                      options={question.options}
+                      correctAnswerText={correctOption?.text || ''}
+                    />
+                  </div>
+                )}
               </div>
             )
           })

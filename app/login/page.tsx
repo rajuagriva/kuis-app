@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { login } from './actions'
+import { GraduationCap } from 'lucide-react'
 
 export default async function LoginPage({
   searchParams,
@@ -10,102 +11,105 @@ export default async function LoginPage({
   const message = params?.message
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
-          Masuk ke Akun
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden" suppressHydrationWarning>
+      
+      {/* Background Glows */}
+      <div className="absolute top-[20%] left-[-10%] w-[40%] h-[40%] rounded-full blur-[100px] opacity-15 bg-indigo-200"></div>
+      <div className="absolute bottom-[20%] right-[-10%] w-[40%] h-[40%] rounded-full blur-[100px] opacity-15 bg-violet-200"></div>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center mb-8">
+        <Link href="/" className="inline-flex items-center gap-2 mb-4 group">
+          <div className="p-2 rounded-xl bg-indigo-600 shadow-md group-hover:scale-105 transition-transform">
+            <GraduationCap className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-xl font-black text-slate-900 tracking-wide">LetsUjian</span>
+        </Link>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+          Selamat Datang Kembali
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Silakan login untuk memulai kuis
+        <p className="mt-2 text-sm text-slate-500 font-medium">
+          Masuk ke akun Anda untuk melanjutkan latihan ujian
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-200">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div className="glass-card py-8 px-6 sm:px-10 rounded-3xl border border-slate-200/80 shadow-xl bg-white">
           
-          <form className="space-y-6">
+          <form className="space-y-5">
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5"
               >
-                Email address
+                Alamat Email
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="nama@email.com"
+                className="block w-full rounded-xl glass-input px-4 py-3 text-sm placeholder-slate-400"
+              />
             </div>
 
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5"
               >
                 Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                />
-              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="Masukkan password Anda"
+                className="block w-full rounded-xl glass-input px-4 py-3 text-sm placeholder-slate-400"
+              />
             </div>
 
-            {/* Menampilkan pesan error jika ada */}
+            {/* Error Message */}
             {message && (
-              <div className="rounded-md bg-red-50 p-4">
-                <div className="flex">
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
-                      Login Gagal
-                    </h3>
-                    <div className="mt-2 text-sm text-red-700">
-                      <p>{message}</p>
-                    </div>
+              <div className="rounded-xl bg-red-50 border border-red-200 p-4 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="text-sm font-bold text-red-600">
+                    Gagal Masuk:
                   </div>
+                </div>
+                <div className="mt-1 text-xs text-red-600/90 font-medium">
+                  {message}
                 </div>
               </div>
             )}
 
-            <div>
+            <div className="pt-2">
               <button
                 formAction={login}
-                className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="flex w-full justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 py-3 px-4 text-sm font-black text-white shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 hover:scale-[1.01]"
               >
-                Sign in
+                Masuk Sekarang
               </button>
             </div>
           </form>
 
-          {/* BAGIAN BARU: Link ke Halaman Register */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-2 text-gray-500">Belum punya akun?</span>
-              </div>
+          {/* Register Link */}
+          <div className="mt-8 border-t border-slate-100 pt-6">
+            <div className="text-center text-xs text-slate-500 font-bold uppercase tracking-wider">
+              Belum punya akun?
             </div>
-
-            <div className="mt-6 text-center">
-              <Link href="/register" className="font-medium text-indigo-600 hover:text-indigo-500">
+            <div className="mt-4 text-center">
+              <Link 
+                href="/register" 
+                className="inline-flex justify-center w-full rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 py-3 text-xs font-bold text-slate-600 hover:text-slate-900 transition-all"
+              >
                 Daftar Akun Baru
               </Link>
             </div>
           </div>
-          {/* AKHIR BAGIAN BARU */}
 
         </div>
       </div>

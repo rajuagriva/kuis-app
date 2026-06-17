@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Sparkles, Loader2, Bot, ChevronRight, XCircle } from 'lucide-react'
 import { askAIExplanation } from '@/app/quiz/ai-actions'
 import MarkdownRenderer from '@/components/markdown-renderer'
+import { getClientGeminiKeys, addHistoryLog } from '@/utils/ai-keys'
 
 interface AskAIButtonProps {
   questionContent: string
@@ -22,15 +23,40 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
     setExplanation('')
 
     try {
-      const result = await askAIExplanation(questionContent, options, correctAnswerText)
+      const keys = getClientGeminiKeys()
+      const result = await askAIExplanation(questionContent, options, correctAnswerText, keys)
 
       if (result.success) {
         setExplanation(result.explanation || '')
+        if (result.modelUsed) {
+          addHistoryLog(
+            result.modelUsed,
+            'success',
+            questionContent.length,
+            (result.explanation || '').length
+          )
+        }
       } else {
-        setError(result.error || 'Terjadi kesalahan pada AI.')
+        const errText = result.error || 'Terjadi kesalahan pada AI.'
+        setError(errText)
+        addHistoryLog(
+          'gemini-2.5-flash',
+          'failed',
+          questionContent.length,
+          0,
+          errText
+        )
       }
-    } catch (err) {
-      setError('Gagal menghubungi server.')
+    } catch (err: any) {
+      const errMsg = err.message || 'Gagal menghubungi server.'
+      setError(errMsg)
+      addHistoryLog(
+        'gemini-2.5-flash',
+        'failed',
+        questionContent.length,
+        0,
+        errMsg
+      )
     } finally {
       setIsLoading(false)
     }

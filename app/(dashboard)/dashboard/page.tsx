@@ -1,13 +1,59 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { getQuizHistory, getSubjects, getDetailedStats } from '@/app/quiz/actions'
-import { Play, CheckCircle, BarChart3, List, History, Award, TrendingUp, Target, Zap, BookOpen } from 'lucide-react'
+import { CheckCircle, List, History, Award, Target, Zap, BookOpen, Clock, Calendar, MessageSquareText, HelpCircle } from 'lucide-react'
 import Link from 'next/link'
 import QuizSelector from '@/components/quiz-selector'
 import ScoreChart from '@/components/score-chart'
+import CountdownTimer from '@/components/countdown-timer'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+
+interface ExamSubject {
+  code: string
+  session: string
+  time: string
+  name: string
+  isEssay?: boolean
+}
+
+interface ExamGroup {
+  key: string
+  title: string
+  date: string
+  color: 'violet' | 'emerald'
+  subjects: ExamSubject[]
+}
+
+// Konfigurasi Jadwal Ujian
+const examGroups: ExamGroup[] = [
+  {
+    key: 'june21',
+    title: 'Ujian Pekan 1: Minggu, 21 Juni 2026',
+    date: '2026-06-21T08:00:00',
+    color: 'violet',
+    subjects: [
+      { code: 'EMBS4207', session: 'Sesi 2', time: '09:45 - 11:15', name: 'Perilaku Organisasi' },
+      { code: 'MKDI4203', session: 'Sesi 3', time: '11:30 - 13:00', name: 'Kewirausahaan di Era Digital' },
+      { code: 'STSI4209', session: 'Sesi 4', time: '13:45 - 15:15', name: 'Pemrograman Berbasis Web' },
+      { code: 'STSI4207', session: 'Sesi 5', time: '15:30 - 17:00', name: 'Sistem Informasi Manajemen' }
+    ]
+  },
+  {
+    key: 'june27',
+    title: 'Ujian Pekan 2: Sabtu, 27 Juni 2026',
+    date: '2026-06-27T08:00:00',
+    color: 'emerald',
+    subjects: [
+      { code: 'STSI4206', session: 'Sesi 1', time: '08:00 - 09:30', name: 'Proses Bisnis' },
+      { code: 'STSI4204', session: 'Sesi 2', time: '09:45 - 11:15', name: 'Analisis dan Visualisasi Data' },
+      { code: 'STSI4102', session: 'Sesi 3', time: '11:30 - 13:00', name: 'Algoritma dan Pemrograman' },
+      { code: 'MKWN4110', session: 'Sesi 4', time: '13:45 - 15:15', name: 'Pancasila' },
+      { code: 'STSI4208', session: 'Sesi 5', time: '15:30 - 17:00', name: 'Analisis dan Perancangan Sistem (Essay)', isEssay: true }
+    ]
+  }
+]
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -38,218 +84,341 @@ export default async function DashboardPage() {
   const realAvgScore = totalQuizForAvg > 0 ? Math.round(totalScoreAccumulated / totalQuizForAvg) : 0
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-12" suppressHydrationWarning>
+    <div className="max-w-7xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pb-12 pt-6" suppressHydrationWarning>
       
-      {/* 1. HEADER: GLOBAL PROGRESS */}
-      <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden" suppressHydrationWarning>
-        
-        <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 rounded-full blur-3xl opacity-20" style={{ backgroundColor: 'var(--primary)' }}></div>
-        <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-32 h-32 rounded-full blur-3xl opacity-10" style={{ backgroundColor: 'var(--primary)' }}></div>
-
-        <div className="relative z-10 flex-1 w-full" suppressHydrationWarning>
-          <div className="flex items-center mb-2">
-            <div className="p-2 rounded-lg mr-3 bg-gray-50" style={{ color: 'var(--primary)' }}>
-              <Target className="w-6 h-6" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Global Progress</h2>
-          </div>
-          <p className="text-gray-500 mb-6 max-w-lg leading-relaxed">
-            Anda telah menguasai <strong style={{ color: 'var(--primary)' }}>{global?.mastered}</strong> dari total <strong className="text-gray-900">{global?.totalQuestions}</strong> soal.
-            <br/><span className="text-xs text-gray-400">Jawab benar 3x agar soal dianggap "Master".</span>
-          </p>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm font-bold text-gray-700">
-              <span style={{ color: 'var(--primary)' }}>{global?.progress}% Selesai</span>
-              <span className="text-gray-400 font-normal">{global?.remaining} soal lagi</span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden border border-gray-100">
-              <div 
-                className="h-full rounded-full transition-all duration-1000 shadow-sm relative overflow-hidden" 
-                style={{ width: `${global?.progress}%`, backgroundColor: 'var(--primary)' }}
-              >
-                 <div className="absolute top-0 left-0 w-full h-full bg-white opacity-20 gradient-to-b from-white to-transparent"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Card Mini */}
-        <div className="relative z-10 flex gap-4 w-full md:w-auto" suppressHydrationWarning>
-           <div className="flex-1 md:w-40 bg-gray-50 rounded-xl p-5 border border-gray-100 text-center">
-             <Zap className="w-6 h-6 text-yellow-500 mx-auto mb-2" />
-             <div className="text-2xl font-extrabold text-gray-900">{realTotalQuiz}</div>
-             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Sesi</div>
-           </div>
-           <div className="flex-1 md:w-40 bg-gray-50 rounded-xl p-5 border border-gray-100 text-center">
-             <Award className="w-6 h-6 text-green-500 mx-auto mb-2" />
-             <div className="text-2xl font-extrabold text-gray-900">{realAvgScore}</div>
-             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Rata-Rata</div>
-           </div>
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Dashboard Peserta</h1>
+          <p className="text-sm text-slate-500 font-medium">Selamat datang kembali! Yuk, matangkan persiapan ujian Anda.</p>
         </div>
       </div>
 
-      {/* Grafik Tren */}
-            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-               <ScoreChart data={history} />
-            </div>
-
-      <hr className="border-gray-200 border-dashed" />
-
-      {/* 3. KARTU PERFORMA MATKUL */}
-      <div suppressHydrationWarning>
-        <div className="flex items-center mb-6">
-          <div className="bg-gray-50 p-2 rounded-lg mr-3">
-            <TrendingUp className="w-5 h-5" style={{ color: 'var(--primary)' }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Detail Per Mata Kuliah</h2>
-            <p className="text-sm text-gray-500">Pantau progres "Master" dan nilai rata-rata Anda.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-          {subjectStats.length > 0 ? subjectStats.map((sub: any) => {
-            const isCompleted = sub.remaining === 0 && sub.totalQuestions > 0
-            
-            let scoreColor = "text-gray-300"
-            let scoreBg = "bg-gray-50"
-            if (sub.quizCount > 0) {
-                if (sub.avgScore >= 80) { scoreColor = "text-green-600"; scoreBg = "bg-green-50"; }
-                else if (sub.avgScore >= 60) { scoreColor = "text-yellow-600"; scoreBg = "bg-yellow-50"; }
-                else { scoreColor = "text-red-600"; scoreBg = "bg-red-50"; }
-            }
+      {/* MAIN LAYOUT GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start" suppressHydrationWarning>
+        
+        {/* KOLOM KIRI (Span 2): Daftar Mata Kuliah per Pekan */}
+        <div className="lg:col-span-2 space-y-8">
+          {examGroups.map((group) => {
+            const borderGlow = group.color === 'violet' ? 'border-indigo-100' : 'border-emerald-100'
+            const badgeColor = group.color === 'violet' ? 'bg-indigo-50 text-indigo-700 border-indigo-150' : 'bg-emerald-50 text-emerald-700 border-emerald-150'
+            const accentText = group.color === 'violet' ? 'text-indigo-600' : 'text-emerald-600'
+            const bgGroup = group.color === 'violet' ? 'bg-indigo-50/10' : 'bg-emerald-50/10'
 
             return (
-              <div key={sub.id} className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-300 flex flex-col hover:border-(--primary)]" style={{ borderColor: 'transparent' }} suppressHydrationWarning>
-                <div className="p-5 grow flex flex-col">
-                  {/* Header Nama Matkul */}
-                  <div className="flex justify-between items-start mb-3">
-                      <span 
-                        className="text-[10px] font-bold px-2 py-1 rounded border bg-gray-50" 
-                        style={{ color: 'var(--primary)', borderColor: 'rgba(0,0,0,0.05)' }}
-                      >
-                        {sub.code}
-                      </span>
-                      {isCompleted && <CheckCircle className="w-5 h-5 text-green-500" />}
-                  </div>
-                  
-                  <h3 className="font-bold text-gray-900 mb-4 line-clamp-2 [3rem] text-sm leading-relaxed group-hover:text-(--primary)] transition-colors">
-                      {sub.name}
+              <div key={group.key} className={`border ${borderGlow} ${bgGroup} rounded-3xl p-6 space-y-6 shadow-sm`} suppressHydrationWarning>
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-200/60 pb-4">
+                  <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                    <Calendar className={`w-5 h-5 ${accentText}`} />
+                    {group.title}
                   </h3>
-
-                  {/* Statistik Nilai */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className={`text-center p-2 rounded-lg ${scoreBg}`}>
-                        <span className={`block text-xl font-bold ${scoreColor}`}>{sub.quizCount > 0 ? sub.avgScore : '-'}</span>
-                        <span className="text-[10px] text-gray-500 font-medium">Nilai Avg</span>
-                    </div>
-                    <div className="text-center p-2 bg-gray-50 rounded-lg">
-                        <span className="block text-xl font-bold text-gray-700">{sub.quizCount}</span>
-                        <span className="text-[10px] text-gray-500 font-medium">Total Kuis</span>
-                    </div>
-                  </div>
-                  
-                  {/* Progress Bar & Detail Angka (UPDATE DISINI) */}
-                  <div className="mt-auto space-y-2">
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full ${isCompleted ? 'bg-green-500' : ''}`} 
-                        style={{ width: `${sub.progress}%`, backgroundColor: isCompleted ? undefined : 'var(--primary)' }}
-                      ></div>
-                    </div>
-                    
-                    {/* Detail Angka Master vs Belum */}
-                    <div className="flex justify-between items-center text-[11px] font-medium pt-1 border-t border-gray-50">
-                      <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded-md">
-                        Master: {sub.masteredQuestions}
-                      </span>
-                      <span className="text-red-500 bg-red-50 px-2 py-0.5 rounded-md">
-                        Belum: {sub.remaining}
-                      </span>
-                    </div>
-                  </div>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full border self-start ${badgeColor}`}>
+                    {group.subjects.length} Mata Kuliah
+                  </span>
                 </div>
 
-                {/* Tombol Latihan (UPDATE: MODE STUDY) */}
-                <div className="p-3 bg-gray-50 border-t border-gray-100">
-                   <Link 
-                      // Ubah 'mode=exam' menjadi 'mode=study'
-                      href={`/quiz/start-custom?mode=study&subjectId=${sub.id}&count=10`} 
-                      className="flex items-center justify-center w-full py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:text-white transition-all shadow-sm group-hover:shadow-md"
-                      style={{ '--hover-bg': 'var(--primary)' } as React.CSSProperties}
-                    >
-                      <span className="flex items-center group-hover:text-(--primary)]">
-                         {/* Ganti icon Play jadi BookOpen biar kesan belajar */}
-                         <BookOpen className="w-3.5 h-3.5 mr-2" /> 
-                         Mulai Belajar
-                      </span>
-                    </Link>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {group.subjects.map((sub) => {
+                    // Cari data stat dari DB
+                    const dbStat = subjectStats.find(
+                      (dbSub: any) => dbSub.code.toUpperCase() === sub.code.toUpperCase()
+                    )
+                    
+                    const hasDB = !!dbStat
+                    const totalQuestions = dbStat?.totalQuestions || 0
+                    const masteredQuestions = dbStat?.masteredQuestions || 0
+                    const remaining = dbStat?.remaining ?? 0
+                    const progress = dbStat?.progress || 0
+                    const avgScore = dbStat?.avgScore || 0
+                    const quizCount = dbStat?.quizCount || 0
+                    const isCompleted = remaining === 0 && totalQuestions > 0
+
+                    let scoreBadgeBg = 'bg-slate-100 text-slate-500'
+                    if (quizCount > 0) {
+                      if (avgScore >= 80) scoreBadgeBg = 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                      else if (avgScore >= 60) scoreBadgeBg = 'bg-amber-50 text-amber-600 border border-amber-100'
+                      else scoreBadgeBg = 'bg-red-50 text-red-600 border border-red-100'
+                    }
+
+                    const cardBorder = group.color === 'violet' ? 'hover:border-indigo-300' : 'hover:border-emerald-300'
+                    const progressBg = group.color === 'violet' ? 'bg-indigo-600' : 'bg-emerald-600'
+
+                    return (
+                      <div 
+                        key={sub.code} 
+                        className={`glass-card rounded-2xl border border-slate-200/80 bg-white transition-all duration-300 flex flex-col group ${cardBorder} relative overflow-hidden shadow-sm`}
+                        suppressHydrationWarning
+                      >
+                        <div className="p-5 flex-1 flex flex-col">
+                          {/* Badge Sesi & Kode */}
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded border border-slate-250 bg-slate-50 text-slate-500 tracking-wider">
+                              {sub.code}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400">
+                              {sub.session} ({sub.time})
+                            </span>
+                          </div>
+
+                          {/* Nama Matkul */}
+                          <h4 className="text-sm font-bold text-slate-800 group-hover:text-indigo-650 transition-colors line-clamp-2 min-h-[2.5rem] leading-relaxed mb-4">
+                            {sub.name}
+                          </h4>
+
+                          {/* Kondisi Jika Mata Kuliah Ada di Database */}
+                          {hasDB ? (
+                            <>
+                              {/* Statistik Nilai */}
+                              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                                <div className={`text-center p-2.5 rounded-xl ${scoreBadgeBg} flex flex-col justify-center`}>
+                                  <span className="block text-lg font-black">{quizCount > 0 ? avgScore : '-'}</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-80">Nilai Avg</span>
+                                </div>
+                                <div className="text-center p-2.5 bg-slate-50 border border-slate-200/60 rounded-xl flex flex-col justify-center">
+                                  <span className="block text-lg font-black text-slate-800">{quizCount}</span>
+                                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Total Kuis</span>
+                                </div>
+                              </div>
+
+                              {/* Progress */}
+                              <div className="mt-auto space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-black">
+                                  <span className={accentText}>{progress}% Dikuasai</span>
+                                  {isCompleted && <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full ${isCompleted ? 'bg-emerald-500' : progressBg}`} 
+                                    style={{ width: `${progress}%` }}
+                                  ></div>
+                                </div>
+                                
+                                <div className="flex justify-between text-[9px] font-bold text-slate-400 pt-1 border-t border-slate-100">
+                                  <span>Master: {masteredQuestions}</span>
+                                  <span>Sisa: {remaining}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex-1 flex flex-col justify-center items-center p-5 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-center mb-4 min-h-[110px]">
+                              <HelpCircle className="w-5 h-5 text-slate-400 mb-1" />
+                              <span className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Belum Ada Soal</span>
+                              <span className="text-[9px] text-slate-405 mt-0.5">Import soal di menu Kelola Ujian</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Tombol Latihan */}
+                        {hasDB && (
+                          <div className="p-3 bg-slate-50/50 border-t border-slate-150">
+                            {sub.isEssay ? (
+                              <Link 
+                                href={`/quiz/essay?subjectId=${dbStat.id}`}
+                                className="flex items-center justify-center w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-indigo-500/10"
+                              >
+                                <MessageSquareText className="w-3.5 h-3.5 mr-1.5" />
+                                Latihan Essay AI
+                              </Link>
+                            ) : (
+                              <Link 
+                                href={`/quiz/start-custom?mode=study&subjectId=${dbStat.id}&count=10`} 
+                                className="flex items-center justify-center w-full py-2.5 bg-white hover:bg-slate-100 hover:text-slate-900 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                                Mulai Belajar
+                              </Link>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
-          }) : (
-             <div className="col-span-full p-8 text-center border-2 border-dashed border-gray-200 rounded-xl">
-                <p className="text-gray-400">Belum ada data mata kuliah.</p>
-             </div>
-          )}
-        </div>
-      </div>
-      
-      {/* 4. LAYOUT BAWAH (Manual & Riwayat) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-4" suppressHydrationWarning>
-        <div className="lg:col-span-1">
-          <div className="flex items-center mb-4">
-            <div className="bg-gray-100 p-2 rounded-lg mr-3"><List className="w-5 h-5 text-gray-600" /></div>
-            <h2 className="text-lg font-bold text-gray-900">Menu Manual</h2>
-          </div>
-          <div className="bg-white p-1 rounded-2xl shadow-sm border border-gray-200" suppressHydrationWarning>
-             <QuizSelector initialSubjects={subjects} />
-          </div>
+          })}
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="flex items-center mb-4">
-            <div className="bg-gray-100 p-2 rounded-lg mr-3"><History className="w-5 h-5 text-gray-600" /></div>
-            <h2 className="text-lg font-bold text-gray-900">Riwayat Terakhir</h2>
+        {/* KOLOM KANAN (Span 1): Sidebar Informasi & Aksi */}
+        <div className="space-y-8" suppressHydrationWarning>
+          
+          {/* A. TARGET & KEMAJUAN GLOBAL */}
+          <div className="glass-card rounded-3xl p-6 border border-slate-200/80 bg-white shadow-sm relative overflow-hidden" suppressHydrationWarning>
+            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-28 h-28 rounded-full blur-3xl opacity-10 bg-indigo-400"></div>
+
+            <div className="relative z-10 space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-slate-800 tracking-tight">Progres Belajar Anda</h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mastery Target</p>
+                </div>
+              </div>
+
+              <p className="text-slate-500 text-xs leading-relaxed font-medium">
+                Anda telah menguasai <strong className="text-indigo-650">{global?.mastered || 0}</strong> dari total <strong className="text-slate-800">{global?.totalQuestions || 0}</strong> soal.
+                <span className="block text-[10px] text-slate-400 mt-1 font-bold">Jawab benar 1x pada kuis agar dianggap "Master".</span>
+              </p>
+              
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span className="text-indigo-600">{global?.progress || 0}% Selesai</span>
+                  <span className="text-slate-400">{global?.remaining || 0} soal sisa</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200/50">
+                  <div 
+                    className="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-indigo-600 to-violet-500 shadow-md relative overflow-hidden" 
+                    style={{ width: `${global?.progress || 0}%` }}
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[bar-stripes_1s_linear_infinite]"></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Card Mini */}
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/40 text-center">
+                  <Zap className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+                  <div className="text-lg font-black text-slate-800">{realTotalQuiz}</div>
+                  <div className="text-[9px] font-bold text-slate-450 uppercase tracking-wider">Total Kuis</div>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/40 text-center">
+                  <Award className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                  <div className="text-lg font-black text-slate-800">{realAvgScore}</div>
+                  <div className="text-[9px] font-bold text-slate-450 uppercase tracking-wider">Rata-Rata</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase">Aktivitas</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-gray-400 uppercase">Skor</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-400 uppercase">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {history.slice(0, 5).map((session: any) => (
-                    <tr key={session.id} className="hover:bg-gray-50 transition-colors" suppressHydrationWarning>
-                      <td className="px-6 py-4">
-                         <div className="text-sm font-bold text-gray-900">
-                            {session.quiz_title || session.module?.source?.subject?.name || 'Kuis Custom'}
-                         </div>
-                         <div className="text-xs text-gray-400 mt-0.5">
-                           {new Date(session.created_at).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', hour:'2-digit', minute:'2-digit', hour12: false, timeZone: 'Asia/Jakarta'})}
-                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                         <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
-                            (session.score || 0) >= 70 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>{session.score ?? '0'}</span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                         <Link href={`/result/${session.id}`} className="text-sm font-medium hover:underline" style={{ color: 'var(--primary)' }}>Lihat</Link>
-                      </td>
+
+          {/* B. TIMER COUNTDOWN UJIAN */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-slate-400" /> Waktu Mundur Ujian
+            </h3>
+            <div className="space-y-4">
+              <CountdownTimer targetDate="2026-06-21T09:45:00" title="Ujian Pekan 1 (21 Juni)" color="violet" />
+              <CountdownTimer targetDate="2026-06-27T08:00:00" title="Ujian Pekan 2 (27 Juni)" color="emerald" />
+            </div>
+          </div>
+
+          {/* C. MULAI LATIHAN BEBAS */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-650">
+                <List className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mulai Latihan Bebas</h3>
+            </div>
+            <QuizSelector initialSubjects={subjects} />
+          </div>
+
+          {/* D. RIWAYAT AKTIVITAS TERAKHIR */}
+          <div className="space-y-4" suppressHydrationWarning>
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-650">
+                <History className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Aktivitas Terakhir</h3>
+            </div>
+            
+            <div className="glass-card rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-100">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Matkul / Sesi</th>
+                      <th className="px-2 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Skor</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aksi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-             </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {history.length > 0 ? (
+                      history.slice(0, 3).map((session: any) => (
+                        <tr key={session.id} className="hover:bg-slate-50/50 transition-colors" suppressHydrationWarning>
+                          <td className="px-4 py-3">
+                            <div className="text-xs font-bold text-slate-700 truncate max-w-[120px]">
+                              {session.quiz_title || session.module?.source?.subject?.name || 'Kuis Custom'}
+                            </div>
+                            <div className="text-[9px] text-slate-400 mt-0.5 font-semibold">
+                              {new Date(session.created_at).toLocaleDateString('id-ID', {
+                                day: 'numeric', 
+                                month: 'short', 
+                                hour: '2-digit', 
+                                minute: '2-digit'
+                              })}
+                            </div>
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-black border ${
+                              (session.score || 0) >= 70 
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                                : 'bg-red-50 text-red-500 border-red-100'
+                            }`}>
+                              {session.score ?? '0'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Link 
+                              href={`/result/${session.id}`} 
+                              className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 px-2 py-1.5 rounded-lg bg-indigo-50 border border-indigo-100/50 hover:bg-indigo-100/30 transition-all"
+                            >
+                              Detail
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-slate-400 text-xs">
+                          Belum ada riwayat pengerjaan kuis.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
+
         </div>
       </div>
+
+      {/* GRAFIK TREN BELAJAR (Di Bawah Full Width) */}
+      {history.length > 0 && (
+        <div className="glass-card p-6 rounded-3xl border border-slate-200/80 bg-white shadow-sm" suppressHydrationWarning>
+          <div className="flex items-center gap-2 mb-6">
+            <TrendingUp className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-sm font-black text-slate-800">Grafik Perkembangan Skor</h3>
+          </div>
+          <div className="w-full overflow-hidden">
+            <ScoreChart data={history} />
+          </div>
+        </div>
+      )}
+      
     </div>
+  )
+}
+
+function TrendingUp(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
   )
 }
