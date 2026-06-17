@@ -5,6 +5,14 @@
   --color-primary-hover: #4338ca;
   --color-accent-violet: #7c3aed;
   --color-accent-emerald: #059669;
+
+  /* Custom color mappings for invalid Tailwind classes used in design */
+  --color-indigo-650: #4338ca;
+  --color-indigo-750: #312e81;
+  --color-slate-650: #475569;
+  --color-slate-755: #334155;
+  --color-red-650: #dc2626;
+  --color-violet-650: #7c3aed;
 }
 
 :root {

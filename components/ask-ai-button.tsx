@@ -16,11 +16,13 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
   const [explanation, setExplanation] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [aiModel, setAiModel] = useState('')
 
   const handleAskAI = async () => {
     setIsLoading(true)
     setError('')
     setExplanation('')
+    setAiModel('')
 
     try {
       const keys = getClientGeminiKeys()
@@ -28,6 +30,7 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
 
       if (result.success) {
         setExplanation(result.explanation || '')
+        setAiModel(result.modelUsed || '')
         if (result.modelUsed) {
           addHistoryLog(
             result.modelUsed,
@@ -123,7 +126,7 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Penjelasan AI Tutor</h3>
-              <p className="text-xs text-slate-500 font-medium">Powered by GPT 120B (Groq)</p>
+              <p className="text-xs text-slate-500 font-medium">Powered by Gemini {aiModel ? `(${aiModel})` : 'AI'}</p>
             </div>
           </div>
           

@@ -244,6 +244,42 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
 
   const handleResetLimits = () => {
     const defaultRegistry = {
+      "gemini-3.5-flash": {
+        provider: 'gemini',
+        name: 'Gemini 3.5 Flash',
+        remainingRequests: 15,
+        maxRequests: 15,
+        remainingTokens: 30000,
+        maxTokens: 30000,
+        resetRequestsTime: 0,
+        resetTokensTime: 0,
+        isLimited: false,
+        history: registry["gemini-3.5-flash"]?.history || []
+      },
+      "gemini-3.1-flash-lite": {
+        provider: 'gemini',
+        name: 'Gemini 3.1 Flash Lite',
+        remainingRequests: 15,
+        maxRequests: 15,
+        remainingTokens: 30000,
+        maxTokens: 30000,
+        resetRequestsTime: 0,
+        resetTokensTime: 0,
+        isLimited: false,
+        history: registry["gemini-3.1-flash-lite"]?.history || []
+      },
+      "gemini-3.0-flash-preview": {
+        provider: 'gemini',
+        name: 'Gemini 3.0 Flash Preview',
+        remainingRequests: 15,
+        maxRequests: 15,
+        remainingTokens: 30000,
+        maxTokens: 30000,
+        resetRequestsTime: 0,
+        resetTokensTime: 0,
+        isLimited: false,
+        history: registry["gemini-3.0-flash-preview"]?.history || []
+      },
       "gemini-2.5-flash": {
         provider: 'gemini',
         name: 'Gemini 2.5 Flash',
@@ -332,6 +368,9 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
   const priorityRouteSequence = useMemo(() => {
     // Default models we support
     const models = [
+      { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+      { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
+      { id: 'gemini-3.0-flash-preview', name: 'Gemini 3.0 Flash Preview' },
       { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
       { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
       { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },

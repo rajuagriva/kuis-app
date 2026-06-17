@@ -27,13 +27,52 @@ export function getClientGeminiKeys(): string[] {
 
 // Pricing per 1.000.000 tokens (dalam USD)
 export const pricing: Record<string, { input: number; output: number }> = {
-  'gemini-2.5-flash': { input: 0.075, output: 0.30 },
-  'gemini-2.5-flash-lite': { input: 0.0375, output: 0.15 },
+  'gemini-3.5-flash': { input: 1.50, output: 9.00 },
+  'gemini-3.1-flash-lite': { input: 0.25, output: 1.50 },
+  'gemini-3.0-flash-preview': { input: 0.50, output: 3.00 },
+  'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+  'gemini-2.5-flash-lite': { input: 0.10, output: 0.40 },
   'gemini-1.5-flash': { input: 0.075, output: 0.30 },
   'gemini-1.5-flash-8b': { input: 0.0375, output: 0.15 }
 }
 
 const DEFAULT_REGISTRY: Record<string, any> = {
+  "gemini-3.5-flash": {
+    provider: 'gemini',
+    name: 'Gemini 3.5 Flash',
+    remainingRequests: 15,
+    maxRequests: 15,
+    remainingTokens: 30000,
+    maxTokens: 30000,
+    resetRequestsTime: 0,
+    resetTokensTime: 0,
+    isLimited: false,
+    history: []
+  },
+  "gemini-3.1-flash-lite": {
+    provider: 'gemini',
+    name: 'Gemini 3.1 Flash Lite',
+    remainingRequests: 15,
+    maxRequests: 15,
+    remainingTokens: 30000,
+    maxTokens: 30000,
+    resetRequestsTime: 0,
+    resetTokensTime: 0,
+    isLimited: false,
+    history: []
+  },
+  "gemini-3.0-flash-preview": {
+    provider: 'gemini',
+    name: 'Gemini 3.0 Flash Preview',
+    remainingRequests: 15,
+    maxRequests: 15,
+    remainingTokens: 30000,
+    maxTokens: 30000,
+    resetRequestsTime: 0,
+    resetTokensTime: 0,
+    isLimited: false,
+    history: []
+  },
   "gemini-2.5-flash": {
     provider: 'gemini',
     name: 'Gemini 2.5 Flash',
