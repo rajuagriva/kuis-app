@@ -10,9 +10,10 @@ interface AskAIButtonProps {
   questionContent: string
   options: any[]
   correctAnswerText: string
+  userAnswerText?: string
 }
 
-export default function AskAIButton({ questionContent, options, correctAnswerText }: AskAIButtonProps) {
+export default function AskAIButton({ questionContent, options, correctAnswerText, userAnswerText }: AskAIButtonProps) {
   const [explanation, setExplanation] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -26,7 +27,7 @@ export default function AskAIButton({ questionContent, options, correctAnswerTex
 
     try {
       const keys = getClientGeminiKeys()
-      const result = await askAIExplanation(questionContent, options, correctAnswerText, keys)
+      const result = await askAIExplanation(questionContent, options, correctAnswerText, userAnswerText, keys)
 
       if (result.success) {
         setExplanation(result.explanation || '')

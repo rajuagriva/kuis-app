@@ -72,6 +72,18 @@ interface Question {
   explanation: string
 }
 
+const STANDARD_SUBJECTS: Record<string, string> = {
+  'EMBS4207': 'Perilaku Organisasi',
+  'MKDI4203': 'Kewirausahaan di Era Digital',
+  'STSI4209': 'Pemrograman Berbasis Web',
+  'STSI4207': 'Sistem Informasi Manajemen',
+  'STSI4206': 'Proses Bisnis',
+  'STSI4204': 'Analisis dan Visualisasi Data',
+  'STSI4102': 'Algoritma dan Pemrograman',
+  'MKWN4110': 'Pancasila',
+  'STSI4208': 'Analisis dan Perancangan Sistem'
+}
+
 interface AdminPanelProps {
   initialSubjects: any[]
   initialModules: any[]
@@ -80,6 +92,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ initialSubjects, initialModules }: AdminPanelProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'subjects' | 'questions' | 'import' | 'settings' | 'monitor'>('subjects')
+  const [selectedImportCode, setSelectedImportCode] = useState('auto')
 
   // states untuk Copy JSON
   const [copiedGanda, setCopiedGanda] = useState(false)
@@ -450,10 +463,12 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
   }
 
   const handleCopyGanda = () => {
+    const currentCode = selectedImportCode === 'auto' ? 'STSI4209' : selectedImportCode
+    const currentName = selectedImportCode === 'auto' ? 'Pemrograman Web' : (STANDARD_SUBJECTS[selectedImportCode] || 'Mata Kuliah')
     const code = `[
   {
-    "code": "STSI4209",
-    "name": "Pemrograman Web",
+    "code": "${currentCode}",
+    "name": "${currentName}",
     "sources": [
       {
         "name": "Kumpulan Soal UAS",
@@ -463,11 +478,13 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
             "name": "Modul 1: Dasar HTML",
             "questions": [
               {
-                "content": "Tag HTML untuk paragraf adalah...",
-                "explanation": "Tag <p> digunakan untuk paragraf.",
+                "content": "Manakah yang merupakan tag HTML untuk membuat teks tebal (bold)?",
+                "explanation": "Tag <strong> atau <b> digunakan untuk menebalkan teks dalam HTML.",
                 "options": [
-                  { "text": "<p>", "is_correct": true },
-                  { "text": "<a>", "is_correct": false }
+                  { "text": "<i>", "is_correct": false },
+                  { "text": "<a>", "is_correct": false },
+                  { "text": "<strong>", "is_correct": true },
+                  { "text": "<table>", "is_correct": false }
                 ]
               }
             ]
@@ -483,10 +500,12 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
   }
 
   const handleCopyEssay = () => {
+    const currentCode = selectedImportCode === 'auto' ? 'STSI4208' : selectedImportCode
+    const currentName = selectedImportCode === 'auto' ? 'Analisis Sistem' : (STANDARD_SUBJECTS[selectedImportCode] || 'Mata Kuliah')
     const code = `[
   {
-    "code": "STSI4208",
-    "name": "Analisis Sistem",
+    "code": "${currentCode}",
+    "name": "${currentName}",
     "sources": [
       {
         "name": "Latihan Essay Mandiri",
@@ -1039,6 +1058,33 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
                   {/* Form Upload */}
                   <form action={handleUploadSubmit} className="space-y-6">
                     
+                    {/* Pilih Mata Kuliah Penerima */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-500">
+                        Mata Kuliah Penerima (Baku)
+                      </label>
+                      <select
+                        name="subjectCode"
+                        value={selectedImportCode}
+                        onChange={(e) => setSelectedImportCode(e.target.value)}
+                        className="w-full text-sm font-bold text-slate-800 border border-slate-200 focus:border-indigo-500 bg-white p-3.5 rounded-xl outline-none"
+                      >
+                        <option value="auto">-- Gunakan Kode & Nama dari Berkas JSON --</option>
+                        <option value="EMBS4207">Perilaku Organisasi (EMBS4207)</option>
+                        <option value="MKDI4203">Kewirausahaan di Era Digital (MKDI4203)</option>
+                        <option value="STSI4209">Pemrograman Berbasis Web (STSI4209)</option>
+                        <option value="STSI4207">Sistem Informasi Manajemen (STSI4207)</option>
+                        <option value="STSI4206">Proses Bisnis (STSI4206)</option>
+                        <option value="STSI4204">Analisis dan Visualisasi Data (STSI4204)</option>
+                        <option value="STSI4102">Algoritma dan Pemrograman (STSI4102)</option>
+                        <option value="MKWN4110">Pancasila (MKWN4110)</option>
+                        <option value="STSI4208">Analisis dan Perancangan Sistem (STSI4208)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-450 leading-relaxed font-semibold">
+                        PENTING: Pilih mata kuliah baku di atas jika Anda ingin memaksa file kuis di-upload ke mata kuliah tersebut. Hal ini berguna untuk menghindari duplikasi mata kuliah akibat kesalahan penulisan oleh AI generator.
+                      </p>
+                    </div>
+
                     {/* Area Drop File */}
                     <div className="relative border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center hover:border-indigo-500/50 hover:bg-indigo-5/10 transition-all group cursor-pointer bg-slate-50/30">
                       <input
@@ -1143,8 +1189,8 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
                       <pre className="bg-slate-900 p-4 rounded-xl text-[10px] font-mono text-indigo-200 overflow-x-auto leading-relaxed max-h-[300px] border border-slate-850">
 {`[
   {
-    "code": "STSI4209",
-    "name": "Pemrograman Web",
+    "code": "${selectedImportCode === 'auto' ? 'STSI4209' : selectedImportCode}",
+    "name": "${selectedImportCode === 'auto' ? 'Pemrograman Web' : (STANDARD_SUBJECTS[selectedImportCode] || 'Mata Kuliah')}",
     "sources": [
       {
         "name": "Kumpulan Soal UAS",
@@ -1154,11 +1200,13 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
             "name": "Modul 1: Dasar HTML",
             "questions": [
               {
-                "content": "Tag HTML untuk paragraf adalah...",
-                "explanation": "Tag <p> digunakan untuk paragraf.",
+                "content": "Manakah yang merupakan tag HTML untuk membuat teks tebal (bold)?",
+                "explanation": "Tag <strong> atau <b> digunakan untuk menebalkan teks dalam HTML.",
                 "options": [
-                  { "text": "<p>", "is_correct": true },
-                  { "text": "<a>", "is_correct": false }
+                  { "text": "<i>", "is_correct": false },
+                  { "text": "<a>", "is_correct": false },
+                  { "text": "<strong>", "is_correct": true },
+                  { "text": "<table>", "is_correct": false }
                 ]
               }
             ]
@@ -1204,8 +1252,8 @@ export default function AdminPanel({ initialSubjects, initialModules }: AdminPan
                       <pre className="bg-slate-900 p-4 rounded-xl text-[10px] font-mono text-violet-200 overflow-x-auto leading-relaxed max-h-[300px] border border-slate-850">
 {`[
   {
-    "code": "STSI4208",
-    "name": "Analisis Sistem",
+    "code": "${selectedImportCode === 'auto' ? 'STSI4208' : selectedImportCode}",
+    "name": "${selectedImportCode === 'auto' ? 'Analisis Sistem' : (STANDARD_SUBJECTS[selectedImportCode] || 'Mata Kuliah')}",
     "sources": [
       {
         "name": "Latihan Essay Mandiri",

@@ -43,6 +43,18 @@ async function getOrCreate(supabase: any, table: string, match: object, insertDa
   return created.id
 }
 
+const STANDARD_SUBJECTS: Record<string, string> = {
+  'EMBS4207': 'Perilaku Organisasi',
+  'MKDI4203': 'Kewirausahaan di Era Digital',
+  'STSI4209': 'Pemrograman Berbasis Web',
+  'STSI4207': 'Sistem Informasi Manajemen',
+  'STSI4206': 'Proses Bisnis',
+  'STSI4204': 'Analisis dan Visualisasi Data',
+  'STSI4102': 'Algoritma dan Pemrograman',
+  'MKWN4110': 'Pancasila',
+  'STSI4208': 'Analisis dan Perancangan Sistem'
+}
+
 // ============================================================================
 // 1. UPLOAD QUIZ DATA
 // ============================================================================
@@ -53,6 +65,7 @@ export async function uploadQuizData(prevState: any, formData: FormData) {
   if (!user) return { success: false, message: 'Unauthorized' }
 
   const file = formData.get('file') as File
+  const selectedSubjectCode = formData.get('subjectCode') as string
   if (!file) return { success: false, message: 'File tidak ditemukan.' }
 
   try {
@@ -63,9 +76,17 @@ export async function uploadQuizData(prevState: any, formData: FormData) {
     let totalQuestions = 0
 
     for (const subject of data) {
+      let code = subject.code
+      let name = subject.name
+
+      if (selectedSubjectCode && selectedSubjectCode !== 'auto') {
+        code = selectedSubjectCode
+        name = STANDARD_SUBJECTS[selectedSubjectCode] || name
+      }
+
       const subjectId = await getOrCreate(
         supabase, 'subjects', 
-        { code: subject.code }, { name: subject.name }
+        { code: code }, { name: name }
       )
 
       if (subject.sources) {

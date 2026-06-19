@@ -47,6 +47,18 @@ export default function QuizInterface({
   const currentQuestion = questions[currentIndex]
   const currentAnswerId = answers[currentQuestion.id]
 
+  // Mendapatkan nama mata kuliah secara dinamis
+  const getSubjectName = () => {
+    const firstQ = questions[0]
+    if (!firstQ) return ''
+    const m = Array.isArray(firstQ.module) ? firstQ.module[0] : firstQ.module
+    const src = Array.isArray(m?.source) ? m.source[0] : m?.source
+    const sub = Array.isArray(src?.subject) ? src.subject[0] : src?.subject
+    return sub?.name || ''
+  }
+  
+  const subjectName = getSubjectName()
+
   // Reset showInfo setiap ganti soal
   useEffect(() => {
     setShowInfo(false)
@@ -119,9 +131,10 @@ export default function QuizInterface({
           </div>
           <div>
             <h1 className="font-extrabold text-slate-800 text-sm md:text-base">
-              Soal {currentIndex + 1} <span className="text-slate-400 font-normal">/ {questions.length}</span>
+              {subjectName || `Soal ${currentIndex + 1} / ${questions.length}`}
             </h1>
             <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">
+              {subjectName ? `Soal ${currentIndex + 1} / ${questions.length} • ` : ''}
               {mode === 'study' ? 'Mode Belajar Santai' : 'Simulasi Ujian'}
             </p>
           </div>
@@ -241,12 +254,12 @@ export default function QuizInterface({
               </div>
             )}
             
-            {/* Ask AI button for explanation */}
             {mode === 'study' && isAnswered && (
               <AskAIButton 
                 questionContent={currentQuestion.content} 
                 options={currentQuestion.options} 
                 correctAnswerText={correctAnswer?.text || ''} 
+                userAnswerText={currentQuestion.options.find((o: any) => o.id === currentAnswerId)?.text || ''}
               />
             )}
           </div>

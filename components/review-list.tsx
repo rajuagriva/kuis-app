@@ -199,6 +199,7 @@ export default function ReviewList({ reviews, isEssay = false }: ReviewListProps
                       questionContent={question.content}
                       options={question.options}
                       correctAnswerText={correctOption?.text || ''}
+                      userAnswerText={userOption?.text || ''}
                     />
                   </div>
                 )}

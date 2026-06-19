@@ -119,9 +119,21 @@ export default async function DashboardPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {group.subjects.map((sub) => {
-                    // Cari data stat dari DB
+                    // Cari data stat dari DB dengan normalisasi kode & nama
                     const dbStat = subjectStats.find(
-                      (dbSub: any) => dbSub.code.toUpperCase() === sub.code.toUpperCase()
+                      (dbSub: any) => {
+                        const cleanDbCode = dbSub.code.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+                        const cleanSubCode = sub.code.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+                        
+                        // Normalisasi typo angka 1 dan huruf I
+                        const normDbCode = cleanDbCode.replace(/1/g, 'I')
+                        const normSubCode = cleanSubCode.replace(/1/g, 'I')
+
+                        const cleanDbName = dbSub.name.replace(/[^A-Z]/gi, '').toLowerCase()
+                        const cleanSubName = sub.name.replace(/[^A-Z]/gi, '').toLowerCase()
+                        
+                        return normDbCode === normSubCode || cleanDbName === cleanSubName
+                      }
                     )
                     
                     const hasDB = !!dbStat

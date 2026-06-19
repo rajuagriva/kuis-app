@@ -175,11 +175,23 @@ async function callGeminiWithFallback(
 }
 
 // Penjelasan Soal Pilihan Ganda (Study Mode)
-export async function askAIExplanation(questionText: string, options: any[], correctAnswerText: string, clientKeys?: string[]) {
+export async function askAIExplanation(
+  questionText: string,
+  options: any[],
+  correctAnswerText: string,
+  userAnswerText?: string,
+  clientKeys?: string[]
+) {
   const optionsText = options.map((o: any) => `- ${o.text}`).join('\n')
   
-  const systemInstruction = "Kamu adalah Guru Privat IT yang ramah. Jelaskan dalam Bahasa Indonesia. Gunakan format Markdown (Bold/Code). Penjelasan maksimal 6 kalimat saja biar singkat."
-  const prompt = `SOAL: "${questionText}"\n\nPILIHAN:\n${optionsText}\n\nJAWABAN BENAR: "${correctAnswerText}"\n\nJelaskan kenapa jawaban itu benar dan kenapa yang lain salah.`
+  const systemInstruction = "Kamu adalah Guru Privat IT yang ramah. Jelaskan dalam Bahasa Indonesia. Gunakan format Markdown (Bold/Code). Penjelasan maksimal 6 kalimat saja biar singkat. Analisis secara kritis jawaban yang dipilih oleh user dibandingkan dengan kunci jawaban."
+  
+  let prompt = `SOAL: "${questionText}"\n\nPILIHAN:\n${optionsText}\n\nJAWABAN BENAR: "${correctAnswerText}"\n\n`
+  if (userAnswerText && userAnswerText.trim()) {
+    prompt += `JAWABAN YANG DIPILIH USER: "${userAnswerText}"\n\nJelaskan secara spesifik apakah jawaban yang dipilih user tersebut BENAR atau SALAH. Berikan analisis ringkas kenapa pilihan user tersebut benar/salah, dan jelaskan kenapa kunci jawaban yang benar adalah "${correctAnswerText}".`
+  } else {
+    prompt += `Jelaskan kenapa kunci jawaban "${correctAnswerText}" itu benar dan kenapa pilihan lainnya salah.`
+  }
 
   try {
     const { responseText, modelUsed } = await callGeminiWithFallback(prompt, systemInstruction, false, clientKeys)
@@ -192,8 +204,13 @@ export async function askAIExplanation(questionText: string, options: any[], cor
 
 // Penilaian Essay Mandiri oleh AI
 export async function gradeEssay(questionText: string, expectedExplanation: string, studentAnswer: string, clientKeys?: string[]) {
-  const systemInstruction = `Kamu adalah Asisten Dosen IT yang bertugas menilai jawaban essay mahasiswa secara adil.
+  const systemInstruction = `Kamu adalah Asisten Dosen IT yang bertugas menilai jawaban essay mahasiswa secara adil dan objektif.
 Berikan penilaian dalam Bahasa Indonesia.
+PENTING:
+- Evaluasi JAWABAN MAHASISWA secara kritis berdasarkan PEMBAHASAN ACUAN.
+- Jangan tertukar antara JAWABAN MAHASISWA dan PEMBAHASAN ACUAN.
+- Jika JAWABAN MAHASISWA kosong, tidak menjawab, hanya kata-kata acak, atau tidak ada hubungannya dengan soal, berikan nilai rendah atau 0.
+- Berikan umpan balik yang menjelaskan bagian mana dari jawaban mahasiswa yang sudah benar atau masih salah.
 Format output HARUS selalu berupa JSON valid dengan struktur:
 {
   "score": <angka_0_sampai_100>,
