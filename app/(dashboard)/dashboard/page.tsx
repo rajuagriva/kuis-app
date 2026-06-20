@@ -138,8 +138,8 @@ export default async function DashboardPage() {
                       }
                     )
                     
-                    const hasDB = !!dbStat
                     const totalQuestions = dbStat?.totalQuestions || 0
+                    const hasDB = !!dbStat && totalQuestions > 0
                     const masteredQuestions = dbStat?.masteredQuestions || 0
                     const remaining = dbStat?.remaining ?? 0
                     const progress = dbStat?.progress || 0
@@ -326,7 +326,12 @@ export default async function DashboardPage() {
               </div>
               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mulai Latihan Bebas</h3>
             </div>
-            <QuizSelector initialSubjects={subjects} />
+            <QuizSelector 
+              initialSubjects={subjects.filter((sub: any) => {
+                const stat = subjectStats.find((s: any) => s.subject_id === sub.id)
+                return stat && stat.totalQuestions > 0
+              })} 
+            />
           </div>
 
           {/* D. RIWAYAT AKTIVITAS TERAKHIR */}
