@@ -328,7 +328,7 @@ export default async function DashboardPage() {
             </div>
             <QuizSelector 
               initialSubjects={subjects.filter((sub: any) => {
-                const stat = subjectStats.find((s: any) => s.subject_id === sub.id)
+                const stat = subjectStats.find((s: any) => s.id === sub.id)
                 return stat && stat.totalQuestions > 0
               })} 
             />
