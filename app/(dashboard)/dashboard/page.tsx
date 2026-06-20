@@ -6,6 +6,7 @@ import Link from 'next/link'
 import QuizSelector from '@/components/quiz-selector'
 import ScoreChart from '@/components/score-chart'
 import CountdownTimer from '@/components/countdown-timer'
+import { unstable_noStore as noStore } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -56,6 +57,7 @@ const examGroups: ExamGroup[] = [
 ]
 
 export default async function DashboardPage() {
+  noStore()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

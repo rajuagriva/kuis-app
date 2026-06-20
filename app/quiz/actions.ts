@@ -16,6 +16,7 @@ function shuffleArray<T>(array: T[]): T[] {
 // 1. GET SUBJECTS (FILTERED BY ENROLLMENT)
 // ============================================================================
 export async function getSubjects() {
+  noStore()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
@@ -392,6 +393,7 @@ export async function getQuizResult(sessionId: string) {
 // HISTORY: TAMPILKAN HANYA MATKUL YANG DI-ENROLL
 // ============================================================================
 export async function getQuizHistory() {
+  noStore()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
